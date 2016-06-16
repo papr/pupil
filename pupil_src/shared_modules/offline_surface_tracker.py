@@ -69,11 +69,11 @@ class Offline_Surface_Tracker(Surface_Tracker):
         version = self.persistent_cache.get('version',0)
         cache = self.persistent_cache.get('marker_cache',None)
         if cache is None:
-            self.cache = Cache_List([False for _ in g_pool.timestamps])
+            self.cache = Cache_List([False]*len(g_pool.timestamps))
             self.persistent_cache['version'] = self.marker_cache_version
         elif version != self.marker_cache_version:
             self.persistent_cache['version'] = self.marker_cache_version
-            self.cache = Cache_List([False for _ in g_pool.timestamps])
+            self.cache = Cache_List([False]*len(g_pool.timestamps))
             logger.debug("Marker cache version missmatch. Rebuilding marker cache.")
         else:
             self.cache = Cache_List(cache)
