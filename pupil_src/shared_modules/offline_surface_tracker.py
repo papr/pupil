@@ -120,7 +120,7 @@ class Offline_Surface_Tracker(Surface_Tracker):
 
         def set_min_marker_perimeter(val):
             self.min_marker_perimeter = val
-            self.notify_all({'subject':'min_marker_perimeter_changed','delay':1})
+            self.notify_all({'subject':'pipeline.updated.surface.param.min_marker_perimeter','delay':1})
 
         self.menu.elements[:] = []
         self.menu.append(ui.Button('Close',close))
@@ -148,14 +148,26 @@ class Offline_Surface_Tracker(Surface_Tracker):
 
 
     def on_notify(self,notification):
-        if notification['subject'] == 'gaze_positions_changed':
+        """
+        Reacts to notifications:
+            ``pipeline.updated.gaze.data``: Recalculates surfaces
+            ``pipeline.updated.surface.cache``: Recalculates surfaces
+            ``pipeline.updated.surface.param``: Invalidates cache
+            ``exporter.should_export``: Exports surface statistics
+
+        Emits notifications:
+            ``pipeline.updated.surface.data``
+            ``pipeline.updated.surface.cache``
+            ``pipeline.updated.surface.param.min_marker_perimeter``
+        """
+        if notification['subject'] == 'pipeline.updated.gaze.data':
             logger.info('Gaze postions changed. Recalculating.')
             self.recalculate()
-        elif notification['subject'] == 'surfaces_changed':
-            logger.info('Surfaces changed. Recalculating.')
+        elif notification['subject'] == 'pipeline.updated.surface.cache':
+            logger.info('Cache cleared. Recalculating.')
             self.recalculate()
-        elif notification['subject'] == 'min_marker_perimeter_changed':
-            logger.info('Min marker perimeter adjusted. Re-detecting surfaces.')
+        elif notification['subject'].startswith('pipeline.updated.surface.param'):
+            logger.info('Parameter updated. Re-detecting markers.')
             self.invalidate_surface_caches()
         elif notification['subject'] == "exporter.should_export":
             self.save_surface_statsics_to_file(notification['range'],notification['export_dir'])
@@ -204,6 +216,7 @@ class Offline_Surface_Tracker(Surface_Tracker):
             heatmap[:,:,:3] = c_map
             s.metrics_texture = Named_Texture()
             s.metrics_texture.update_from_ndarray(heatmap)
+        self.notify_all({'subject':'pipeline.updated.surface.data','delay':1})
 
 
     def invalidate_surface_caches(self):
@@ -246,7 +259,7 @@ class Offline_Surface_Tracker(Surface_Tracker):
                 for s in self.surfaces:
                     if s.cache == None and s not in [s for s,i in self.edit_surf_verts]:
                         s.init_cache(self.cache,self.camera_calibration,self.min_marker_perimeter)
-                        self.notify_all({'subject':'surfaces_changed','delay':1})
+                        self.notify_all({'subject':'pipeline.updated.surface.cache','delay':1})
 
 
 
