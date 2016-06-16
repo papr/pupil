@@ -298,7 +298,7 @@ def session(rec_dir):
         else:
             logger.info('Created export dir at "%s"'%export_dir)
 
-        notification = {'subject':'should_export','range':export_range,'export_dir':export_dir}
+        notification = {'subject':'exporter.should_export','range':export_range,'export_dir':export_dir}
         g_pool.notifications.append(notification)
 
     g_pool.gui = ui.UI()

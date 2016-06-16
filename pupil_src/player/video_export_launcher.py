@@ -121,7 +121,7 @@ class Video_Export_Launcher(Plugin):
         return {}
 
     def on_notify(self,notification):
-        if notification['subject'] is "should_export":
+        if notification['subject'] == "exporter.should_export":
             self.add_export(notification['range'],notification['export_dir'])
 
     def add_export(self,export_range,export_dir):

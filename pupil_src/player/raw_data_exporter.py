@@ -122,7 +122,7 @@ class Raw_Data_Exporter(Plugin):
 
 
     def on_notify(self,notification):
-        if notification['subject'] is "should_export":
+        if notification['subject'] == "exporter.should_export":
             self.export_data(notification['range'],notification['export_dir'])
 
 

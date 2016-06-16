@@ -103,7 +103,7 @@ class Fixation_Detector_Dispersion_Duration(Fixation_Detector):
             self._classify()
         elif notification['subject'] == 'fixations_should_recalculate':
             self._classify()
-        elif notification['subject'] is "should_export":
+        elif notification['subject'] == "exporter.should_export":
             self.export_fixations(notification['range'],notification['export_dir'])
 
 

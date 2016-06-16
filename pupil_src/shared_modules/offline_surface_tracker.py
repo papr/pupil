@@ -157,7 +157,7 @@ class Offline_Surface_Tracker(Surface_Tracker):
         elif notification['subject'] == 'min_marker_perimeter_changed':
             logger.info('Min marper perimeter adjusted. Re-detecting surfaces.')
             self.invalidate_surface_caches()
-        elif notification['subject'] is "should_export":
+        elif notification['subject'] == "exporter.should_export":
             self.save_surface_statsics_to_file(notification['range'],notification['export_dir'])
 
 
