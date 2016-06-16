@@ -122,6 +122,10 @@ class Raw_Data_Exporter(Plugin):
 
 
     def on_notify(self,notification):
+        """
+        Reacts to notifications:
+            ``exporter.should_export``
+        """
         if notification['subject'] == "exporter.should_export":
             self.export_data(notification['range'],notification['export_dir'])
 

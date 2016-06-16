@@ -121,6 +121,10 @@ class Video_Export_Launcher(Plugin):
         return {}
 
     def on_notify(self,notification):
+        """
+        Reacts to notifications:
+            ``exporter.should_export``
+        """
         if notification['subject'] == "exporter.should_export":
             self.add_export(notification['range'],notification['export_dir'])
 
