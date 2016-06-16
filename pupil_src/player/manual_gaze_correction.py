@@ -33,7 +33,18 @@ class Manual_Gaze_Correction(Plugin):
         self.y_offset = float(y_offset)
         self._set_offset()
 
+    def on_notify(self,notification):
+        """
+        Reacts to notifications:
+            ``pipeline.initialize``[``.gaze``]:
+                Initializes gaze correction.
 
+        Emits notifications:
+            ``pipeline.updated.gaze.data``
+        """
+        init_subject = 'pipeline.initialize.gaze'
+        if init_subject.startswith(notification['subject']):
+            self._set_offset()
 
     def _set_offset(self):
         x,y = self.x_offset,self.y_offset
@@ -42,7 +53,7 @@ class Manual_Gaze_Correction(Plugin):
                 gaze_pos = self.untouched_gaze_positions_by_frame[f][i]['norm_pos']
                 gaze_pos = gaze_pos[0]+x, gaze_pos[1]+y
                 self.g_pool.gaze_positions_by_frame[f][i]['norm_pos'] =  gaze_pos
-        self.notify_all({'subject':'gaze_positions_changed','delay':3})
+        self.notify_all({'subject':'pipeline.updated.gaze.data','delay':3})
 
 
     def _set_offset_x(self,offset_x):
@@ -80,6 +91,6 @@ class Manual_Gaze_Correction(Plugin):
         if you have a GUI or glfw window destroy it here.
         """
         self.g_pool.gaze_positions_by_frame = self.untouched_gaze_positions_by_frame
-        self.notify_all({'subject':'gaze_positions_changed'})
+        self.notify_all({'subject':'pipeline.updated.gaze.data'})
         self.deinit_gui()
 
