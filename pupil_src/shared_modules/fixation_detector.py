@@ -64,20 +64,20 @@ class Fixation_Detector_Dispersion_Duration(Fixation_Detector):
         def set_h_fov(new_fov):
             self.h_fov = new_fov
             self.pix_per_degree = float(self.g_pool.capture.frame_size[0])/new_fov
-            self.notify_all({'subject':'fixations_should_recalculate','delay':1.})
+            self.notify_all({'subject':'pipeline.updated.fixations.param.h_fov','delay':1.})
 
         def set_v_fov(new_fov):
             self.v_fov = new_fov
             self.pix_per_degree = float(self.g_pool.capture.frame_size[1])/new_fov
-            self.notify_all({'subject':'fixations_should_recalculate','delay':1.})
+            self.notify_all({'subject':'pipeline.updated.fixations.param.v_fov','delay':1.})
 
         def set_duration(new_value):
             self.min_duration = new_value
-            self.notify_all({'subject':'fixations_should_recalculate','delay':1.})
+            self.notify_all({'subject':'pipeline.updated.fixations.param.duration','delay':1.})
 
         def set_dispersion(new_value):
             self.max_dispersion = new_value
-            self.notify_all({'subject':'fixations_should_recalculate','delay':1.})
+            self.notify_all({'subject':'pipeline.updated.fixations.param.dispersion','delay':1.})
 
 
 
@@ -98,10 +98,19 @@ class Fixation_Detector_Dispersion_Duration(Fixation_Detector):
     ###todo setters with delay trigger
 
     def on_notify(self,notification):
-        if notification['subject'] == 'gaze_positions_changed':
+        """
+        Reacts to notifications:
+            ``pipeline.updated.gaze.data``: Reclassifies fixations
+            ``pipeline.updated.fixations.param``: Reclassifies fixations
+            ``exporter.should_export``: Reclassifies fixations
+
+        Emits notifications:
+            ``pipeline.updated.fixations.data``
+        """
+        if notification['subject'] == 'pipeline.updated.gaze.data':
             logger.info('Gaze postions changed. Recalculating.')
             self._classify()
-        elif notification['subject'] == 'fixations_should_recalculate':
+        elif notification['subject'].startswith('pipeline.updated.fixations.param'):
             self._classify()
         elif notification['subject'] == "exporter.should_export":
             self.export_fixations(notification['range'],notification['export_dir'])
@@ -131,7 +140,6 @@ class Fixation_Detector_Dispersion_Duration(Fixation_Detector):
         sample_threshold = self.min_duration * 3 *.3 #lets assume we need data for at least 30% of the duration
         dispersion_threshold = self.max_dispersion
         duration_threshold = self.min_duration
-        self.notify_all({'subject':'fixations_changed'})
 
         def dist_deg(p1,p2):
             return np.sqrt(((p1[0]-p2[0])*self.h_fov)**2+((p1[1]-p2[1])*self.v_fov)**2)
@@ -197,10 +205,10 @@ class Fixation_Detector_Dispersion_Duration(Fixation_Detector):
                 fixations_by_frame[idx].append(f)
 
         self.g_pool.fixations_by_frame = fixations_by_frame
+        self.notify_all({'subject':'pipeline.updated.fixations.data'})
 
 
     def export_fixations(self,export_range,export_dir):
-        #t
         """
         between in and out mark
 
