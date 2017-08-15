@@ -9,6 +9,8 @@ See COPYING and COPYING.LESSER for license details.
 ---------------------------------------------------------------------------~(*)
 '''
 
+from pyglui.cygl.utils import draw_polyline, draw_points, RGBA
+
 from plugin import Plugin
 from pyglui import ui
 from collections import deque
@@ -28,7 +30,7 @@ class Blink_Detection(Plugin):
 
     def __init__(self, g_pool):
         super(Blink_Detection, self).__init__(g_pool)
-        self.history_length = 0.2  # unit: seconds
+        self.history_length = .3  # unit: seconds
 
         # self.minimum_change = 0.7  # minimum difference between min and max confidence value in history
         self.minimum_onset_response = 0.3
@@ -36,6 +38,7 @@ class Blink_Detection(Plugin):
 
         self.history = deque()
         self.menu = None
+        self.recent_act = None
 
     def init_gui(self):
         self.menu = ui.Growing_Menu('Blink Detector')
@@ -70,36 +73,23 @@ class Blink_Detection(Plugin):
             return
 
         activity = np.fromiter((pp['confidence'] for pp in self.history), dtype=float)
-        # if activity.max() - activity.min() < self.minimum_change:
-        #     return
+        act_freq = np.fft.rfft(activity)
+        self.recent_act = np.abs(act_freq)
 
-        # Build blink_filter based on current history length
-        blink_filter = np.ones(filter_size) / filter_size
-        blink_filter[filter_size // 2:] *= -1
+    def gen_hist_points(self, x=0, y=0, binwidth=10, scale=100.):
+        if self.recent_act is not None:
+            cs = np.cumsum(self.recent_act[1:])
+            idx25 = np.argmax(cs > cs[-1]*.25)
+            idx50 = np.argmax(cs > cs[-1]*.5)
+            draw_points([(x+idx25*binwidth, y), (x+idx50*binwidth, y)], color=RGBA(1.,0.5,0.5,1.))
 
-        # # normalize activity
-        # activity -= activity.min()
-        # activity /= activity.max()
+            for idx, val in enumerate(self.recent_act[1:]):
+                yield x+idx*binwidth, y+val*scale
+                # yield x+idx*binwidth+binwidth, y+val*scale
 
-        filter_response = activity @ blink_filter
-
-        if -self.minimum_offset_response <= filter_response <= self.minimum_onset_response:
-            return  # response cannot be classified as blink onset or offset
-
-        if filter_response > self.minimum_onset_response:
-            logger.warning('onset  {:0.3f}'.format(filter_response))
-        else:
-            logger.warning('offset {:0.3f}'.format(filter_response))
-
-        # Add info to events
-        blink_entry = {
-            'topic': 'blink',
-            'filter_response': filter_response,
-            'base_data': list(self.history),
-            'timestamp': self.history[len(self.history)//2]['timestamp'],
-            'is_blink': bool(filter_response > self.minimum_onset_response)
-        }
-        events['blinks'].append(blink_entry)
+    def gl_display(self):
+        points = list(self.gen_hist_points(x=200, y=200, scale=30., binwidth=20.))
+        draw_polyline(points, thickness=5, color=RGBA(1.,0.5,0.5,1.))
 
     def get_init_dict(self):
         return {}
