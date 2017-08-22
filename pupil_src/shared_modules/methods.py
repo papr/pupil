@@ -12,6 +12,7 @@ See COPYING and COPYING.LESSER for license details.
 import os, sys, platform, getpass
 from time import time
 import numpy as np
+from scipy.spatial.distance import pdist, squareform
 try:
     import numexpr as ne
 except:
@@ -366,7 +367,7 @@ def find_slope_disc(curvature,angle = 15):
             split_idx.add(i)
         i +=1
 
-    return split_list
+    return split_idx
 
 def find_slope_disc_test(curvature,angle = 15):
     # this only makes sense when your polyline is longish
@@ -447,9 +448,11 @@ def size_deviation(ellipse,target_size):
     center, axis, angle = ellipse
     return abs(target_size-max(axis))
 
-
-
-
+def gammaidx(X, k):
+    k = min(k, X.shape[0] - 1)
+    dist = squareform(pdist(X))
+    dist.sort(axis=1)
+    return dist[:, 1:k + 1].sum(axis=1) / k
 
 def circle_grid(image, pattern_size=(4,11)):
     """Circle grid: finds an assymetric circle pattern
