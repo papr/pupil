@@ -74,7 +74,7 @@ class Marker_Auto_Trim_Marks(Plugin):
         self.sections = None
 
     def del_man_in_mark(self, mark):
-        if mark == "select one":
+        if mark == "Select one":
             return
         self.man_in_marks.remove(mark)
         self.sections = None
@@ -84,7 +84,7 @@ class Marker_Auto_Trim_Marks(Plugin):
         self.sections = None
 
     def del_man_out_mark(self, mark):
-        if mark == "select one":
+        if mark == "Select one":
             return
         self.man_out_marks.remove(mark)
         self.sections = None
@@ -129,7 +129,6 @@ class Marker_Auto_Trim_Marks(Plugin):
         else:
             self.menu[0].text  = "Marker Auto Trim Marks: Turn on Offline_Surface_Tracker!"
 
-
     def recent_events(self, events):
         frame = events.get('frame')
         if not frame:
@@ -140,7 +139,7 @@ class Marker_Auto_Trim_Marks(Plugin):
         if self.surface_export_queue:
             self.surface_export(self.surface_export_queue.pop(0))
 
-        if self.sections == None:
+        if self.sections is None:
             plugins = [p for p in self.g_pool.plugins if isinstance(p,Offline_Surface_Tracker)]
             if plugins:
                 marker_tracker_plugin = plugins[0]
@@ -197,12 +196,13 @@ class Marker_Auto_Trim_Marks(Plugin):
                         section_in_index = last_in_marker_of_this_cluster[1]
                     else:
                         #t=="out"
-                        fist_out_marker_of_this_clutser = g.next() #first item in cluster
+                        fist_out_marker_of_this_clutser = next(g)  #first item in cluster
                         section_out_index = fist_out_marker_of_this_clutser[1]
                         self.sections.append((section_in_index,section_out_index))
 
-                self.sections = [(s, e) for s, e in self.sections if e-s>10]#we filter out tiny sections
-                # because they can happen with out markers at video start and in marker at video end.
+                # we filter out tiny sections because they can happen with out
+                # markers at video start and in marker at video end.
+                self.sections = [(s, e) for s, e in self.sections if e-s > 10]
 
                 # Lines for areas that have been cached
                 self.gl_display_ranges = []
@@ -210,19 +210,30 @@ class Marker_Auto_Trim_Marks(Plugin):
                     self.gl_display_ranges += (r[0],0),(r[1],0) #[(0,0),(1,0),(3,0),(4,0)]
 
                 if self.sections:
-                    self.activate_section=self.sections[0]
+                    self.activate_section(self.sections[0])
                 del self.menu.elements[:]
-                self.menu.append(ui.Slider('in_marker_id',self,min=0,step=1,max=63,label='IN marker id'))
-                self.menu.append(ui.Slider('out_marker_id',self,min=0,step=1,max=63,label='OUT marker id'))
-                self.menu.append(ui.Selector('active_section',self,selection=self.sections,setter=self.activate_section,label='set section'))
-                self.menu.append(ui.Button('video export all sections',self.enqueue_video_export))
-                self.menu.append(ui.Button('surface export all sections',self.enqueue_surface_export))
+                self.menu.append(ui.Slider('in_marker_id', self, min=0, step=1,
+                                           max=63, label='IN marker id'))
+                self.menu.append(ui.Slider('out_marker_id', self, min=0, step=1,
+                                           max=63, label='OUT marker id'))
+                self.menu.append(ui.Selector('active_section', self, selection=self.sections,
+                                             setter=self.activate_section, label='set section'))
+                self.menu.append(ui.Button('video export all sections', self.enqueue_video_export))
+                self.menu.append(ui.Button('surface export all sections', self.enqueue_surface_export))
 
-                self.menu.append(ui.Button('add in_mark here',self.add_manual_in_mark))
-                self.menu.append(ui.Selector('man_in_mark',selection=self.man_in_marks,setter=self.del_man_in_mark,getter=lambda:"select one",label='del manual in marker'))
+                self.menu.append(ui.Button('Add in_mark here', self.add_manual_in_mark))
+                self.menu.append(ui.Selector('man_in_mark',
+                                             selection=["Select one"] + self.man_in_marks,
+                                             setter=self.del_man_in_mark,
+                                             getter=lambda: "Select one",
+                                             label='del manual in marker'))
 
-                self.menu.append(ui.Button('add out mark here',self.add_manual_out_mark))
-                self.menu.append(ui.Selector('man_out_mark',selection=self.man_out_marks,setter=self.del_man_out_mark,getter=lambda:"select one",label='del manual out marker'))
+                self.menu.append(ui.Button('Add out mark here', self.add_manual_out_mark))
+                self.menu.append(ui.Selector('man_out_mark',
+                                             selection=["Select one"] + self.man_out_marks,
+                                             setter=self.del_man_out_mark,
+                                             getter=lambda: "Select one",
+                                             label='Delete manual out marker'))
             else:
                 self.menu.label = "Marker Auto Trim Marks: Waiting for Cacher to finish"
 
