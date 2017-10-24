@@ -23,6 +23,7 @@ from pyglui.cygl.utils import RGBA,draw_points,draw_polyline
 from OpenGL.GL import *
 from glfw import *
 
+import gl_utils
 import numpy as np
 from itertools import groupby
 
@@ -43,14 +44,15 @@ class Marker_Auto_Trim_Marks(Plugin):
     icon_chr = chr(0xe41f)
     icon_font = 'pupil_icons'
 
-    def __init__(self, g_pool,man_in_marks=[],man_out_marks=[]):
+    def __init__(self, g_pool, man_in_marks=[], man_out_marks=[]):
         super().__init__(g_pool)
         self.menu = None
+        self.timeline_line_height = 16
 
         self.in_marker_id = 18
         self.out_marker_id = 25
         self.active_section = 0
-        self.sections = None
+        self.sections = []
         self.gl_display_ranges = []
 
         self.man_in_marks = man_in_marks
@@ -66,28 +68,33 @@ class Marker_Auto_Trim_Marks(Plugin):
         self.menu.label = 'Marker Auto Trim Marks'
         self.menu.append(ui.Info_Text("Marker Auto uses the marker detector to get markers"))
 
+        self.timeline = ui.Timeline('Auto Trim Sections', self.gl_display_cache_bars, height=1)
+        self.g_pool.user_timelines.append(self.timeline)
+
     def deinit_ui(self):
         self.remove_menu()
+        self.g_pool.user_timelines.remove(self.timeline)
+        self.timeline = None
 
     def add_manual_in_mark(self):
         self.man_in_marks.append(self.current_frame_idx)
-        self.sections = None
+        self.sections = []
 
     def del_man_in_mark(self, mark):
         if mark == "Select one":
             return
         self.man_in_marks.remove(mark)
-        self.sections = None
+        self.sections = []
 
     def add_manual_out_mark(self):
         self.man_out_marks.append(self.current_frame_idx)
-        self.sections = None
+        self.sections = []
 
     def del_man_out_mark(self, mark):
         if mark == "Select one":
             return
         self.man_out_marks.remove(mark)
-        self.sections = None
+        self.sections = []
 
     def enqueue_video_export(self):
         self.video_export_queue = self.sections[:]
@@ -104,7 +111,7 @@ class Marker_Auto_Trim_Marks(Plugin):
             launcher.rec_name.value = "world_viz_section_{}-{}".format(*section)
             launcher.add_export()
 
-    def surface_export(self,section):
+    def surface_export(self, section):
         plugins = [p for p in self.g_pool.plugins if isinstance(p,Offline_Surface_Tracker)]
         if plugins:
             tracker = plugins[0]
@@ -238,31 +245,15 @@ class Marker_Auto_Trim_Marks(Plugin):
                 self.menu.label = "Marker Auto Trim Marks: Waiting for Cacher to finish"
 
     def gl_display(self):
-        if self.sections:
-            self.gl_display_cache_bars()
+        self.timeline.height = max(0.001, self.timeline_line_height * len(self.sections))
 
-    def gl_display_cache_bars(self):
+    def gl_display_cache_bars(self, width, height, scale):
         """
         """
-        padding = 20.
-        frame_max = len(self.g_pool.timestamps) #last marker is garanteed to be frame max.
-
-        glMatrixMode(GL_PROJECTION)
-        glPushMatrix()
-        glLoadIdentity()
-        width,height = self.g_pool.camera_render_size
-        h_pad = padding * (frame_max-2)/float(width)
-        v_pad = padding* 1./(height-2)
-        gluOrtho(-h_pad,  (frame_max-1)+h_pad, -v_pad, 1+v_pad,-1, 1) # ranging from 0 to cache_len-1 (horizontal) and 0 to 1 (vertical)
-
-        glMatrixMode(GL_MODELVIEW)
-        glPushMatrix()
-        glLoadIdentity()
-        glTranslatef(0,-.02,0)
-        color = (7.,.1,.2,8.)
-        draw_polyline(self.gl_display_ranges,color=RGBA(*color),line_type=GL_LINES,thickness=2.)
-
-        glMatrixMode(GL_PROJECTION)
-        glPopMatrix()
-        glMatrixMode(GL_MODELVIEW)
-        glPopMatrix()
+        frame_max = len(self.g_pool.timestamps)  # last marker is garanteed to be frame max.
+        with gl_utils.Coord_System(0, frame_max, height, 0):
+            glTranslatef(0, 0.001 + scale * self.timeline_line_height / 2, 0)
+            for s in self.sections:
+                draw_polyline(self.gl_display_ranges, color=RGBA(7., .1, .2, 8.),
+                              line_type=GL_LINES, thickness=2.)
+                glTranslatef(0, scale * self.timeline_line_height, 0)
