@@ -11,7 +11,6 @@ See COPYING and COPYING.LESSER for license details.
 
 from pyglui import ui
 from plugin import System_Plugin_Base
-
 import logging
 logger = logging.getLogger(__name__)
 
@@ -35,7 +34,8 @@ class Seek_Control(System_Plugin_Base):
         self.was_playing = True
 
     def init_ui(self):
-        self.seek_bar = ui.Seek_Bar(self, self.frame_count - 1, self.on_seek, self.g_pool.user_timelines)
+        self.seek_bar = ui.Seek_Bar(self, self.frame_count - 1, self.on_seek,
+                                    self.format_index, self.g_pool.user_timelines)
         self.g_pool.timelines.append(self.seek_bar)
 
     def deinit_ui(self):
@@ -61,6 +61,12 @@ class Seek_Control(System_Plugin_Base):
                 pass
             self.g_pool.new_seek = True
             self.g_pool.capture.play = self.was_playing
+
+    def format_index(self, index):
+        time_dif = self.g_pool.timestamps[index] - self.g_pool.timestamps[0]
+        minutes = time_dif // 60
+        seconds = time_dif % 60
+        return '{:02.0f}:{:06.3f}'.format(abs(minutes), seconds)
 
     @property
     def play(self):
