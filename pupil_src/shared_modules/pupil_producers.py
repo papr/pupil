@@ -22,6 +22,9 @@ from time import sleep
 from player_methods import correlate_data
 from file_methods import load_object,save_object
 
+from time import time
+from memory_profiler import memory_usage
+
 import pupil_detectors  # trigger module compilation
 
 import logging
@@ -88,6 +91,7 @@ class Offline_Pupil_Detection(Pupil_Producer_Base):
 
     def __init__(self, g_pool):
         super().__init__(g_pool)
+        self.start_stats = None
         zmq_ctx = zmq.Context()
         self.data_sub = zmq_tools.Msg_Receiver(zmq_ctx, g_pool.ipc_sub_url, topics=('pupil','notify.file_source.video_finished'))
 
@@ -147,6 +151,7 @@ class Offline_Pupil_Detection(Pupil_Producer_Base):
                          'overwrite_cap_settings': capure_settings})
         self.eye_video_loc[eye_id] = video_loc
         self.detection_status[eye_id] = "Detecting..."
+        self.start_stats = time(), memory_usage()[0]
 
     def stop_eye_process(self, eye_id):
         self.notify_all({'subject': 'eye_process.should_stop', 'eye_id': eye_id})
@@ -177,6 +182,11 @@ class Offline_Pupil_Detection(Pupil_Producer_Base):
         self.g_pool.pupil_positions_by_frame = correlate_data(list(self.pupil_positions.values()), self.g_pool.timestamps)
         self.notify_all({'subject': 'pupil_positions_changed'})
         logger.debug('pupil positions changed')
+        if self.start_stats:
+            time_dif = time() - self.start_stats[0]
+            mem_dif = memory_usage()[0] - self.start_stats[1]
+            self.start_stats = None
+            print('Pupil Detection:\n\tdur: {}secs\n\tmem: {}MB'.format(time_dif, mem_dif))
 
     def on_notify(self, notification):
         if notification['subject'] == 'eye_process.started':
