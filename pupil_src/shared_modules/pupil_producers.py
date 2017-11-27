@@ -15,12 +15,13 @@ import platform
 import glob
 import zmq
 import zmq_tools
+import msgpack
 import numpy as np
 from plugin import Producer_Plugin_Base
 from pyglui import ui
 from time import sleep
 from player_methods import correlate_data
-from file_methods import load_object,save_object
+from file_methods import load_object, save_object, DataProxy
 
 from time import time
 from memory_profiler import memory_usage
@@ -117,6 +118,7 @@ class Offline_Pupil_Detection(Pupil_Producer_Base):
         self.detection_paused = False
 
         # start processes
+        self.start_stats = time(), memory_usage()[0]
         for eye_id in range(2):
             if self.detection_status[eye_id] != 'complete':
                 self.start_eye_process(eye_id)
@@ -151,7 +153,6 @@ class Offline_Pupil_Detection(Pupil_Producer_Base):
                          'overwrite_cap_settings': capure_settings})
         self.eye_video_loc[eye_id] = video_loc
         self.detection_status[eye_id] = "Detecting..."
-        self.start_stats = time(), memory_usage()[0]
 
     def stop_eye_process(self, eye_id):
         self.notify_all({'subject': 'eye_process.should_stop', 'eye_id': eye_id})
@@ -160,20 +161,25 @@ class Offline_Pupil_Detection(Pupil_Producer_Base):
     def recent_events(self, events):
         super().recent_events(events)
         while self.data_sub.new_data:
-            topic, payload = self.data_sub.recv()
+            topic = self.data_sub.socket.recv_string()
+            serialized = self.data_sub.socket.recv()
+
             if topic.startswith('pupil.'):
+                payload = DataProxy(serialized)
                 self.pupil_positions[payload['timestamp']] = payload
-            elif payload['subject'] == 'file_source.video_finished':
-                if self.eye_video_loc[0] == payload['source_path']:
-                    logger.debug("eye 0 process complete")
-                    self.detection_status[0] = "complete"
-                    self.stop_eye_process(0)
-                elif self.eye_video_loc[1] == payload['source_path']:
-                    logger.debug("eye 1 process complete")
-                    self.detection_status[1] = "complete"
-                    self.stop_eye_process(1)
-                if self.eye_video_loc == [None, None]:
-                    self.correlate_publish()
+            else:
+                payload = msgpack.unpackb(serialized, encoding='utf-8')
+                if payload['subject'] == 'file_source.video_finished':
+                    if self.eye_video_loc[0] == payload['source_path']:
+                        logger.debug("eye 0 process complete")
+                        self.detection_status[0] = "complete"
+                        self.stop_eye_process(0)
+                    elif self.eye_video_loc[1] == payload['source_path']:
+                        logger.debug("eye 1 process complete")
+                        self.detection_status[1] = "complete"
+                        self.stop_eye_process(1)
+                    if self.eye_video_loc == [None, None]:
+                        self.correlate_publish()
         total = sum(self.eye_frame_num)
         self.menu_icon.indicator_stop = len(self.pupil_positions) / total if total else 0.
 
