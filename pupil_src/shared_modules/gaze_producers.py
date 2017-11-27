@@ -30,6 +30,8 @@ import background_helper as bh
 import zmq_tools
 from itertools import chain, cycle
 
+from memory_profiler import memory_usage
+
 import logging
 logger = logging.getLogger(__name__)
 
@@ -225,10 +227,12 @@ class Offline_Calibration(Gaze_Producer_Base):
         self.manual_ref_positions = session_data['manual_ref_positions']
         if self.circle_marker_positions:
             self.detection_progress = 100.0
+            self.start_stats = time(), memory_usage()[0]
             for s in self.sections:
                 self.calibrate_section(s)
             self.correlate_and_publish()
         else:
+            self.start_stats = None
             self.detection_progress = 0.0
             self.start_detection_task()
 
@@ -353,6 +357,7 @@ class Offline_Calibration(Gaze_Producer_Base):
     def on_notify(self, notification):
         subject = notification['subject']
         if subject == 'pupil_positions_changed':
+            self.start_stats = time(), memory_usage()[0]
             for s in self.sections:
                 self.calibrate_section(s)
 
@@ -411,6 +416,11 @@ class Offline_Calibration(Gaze_Producer_Base):
         self.g_pool.gaze_positions = sorted(all_gaze, key=lambda d: d['timestamp'])
         self.g_pool.gaze_positions_by_frame = correlate_data(self.g_pool.gaze_positions, self.g_pool.timestamps)
         self.notify_all({'subject': 'gaze_positions_changed','delay':1})
+        if self.start_stats:
+            time_dif = time() - self.start_stats[0]
+            mem_dif = memory_usage()[0] - self.start_stats[1]
+            self.start_stats = None
+            print('Gaze Mapping:\n\tdur: {}secs\n\tmem: {}MB'.format(time_dif, mem_dif))
 
     def calibrate_section(self,sec):
         if sec['bg_task']:
