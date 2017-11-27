@@ -362,8 +362,7 @@ def player(rec_dir, ipc_pub_url, ipc_sub_url,
 
         # we always load these plugins
         default_plugins = [('Plugin_Manager', {}), ('Seek_Control', {}), ('Log_Display', {}),
-                           ('Vis_Scan_Path', {}), ('Vis_Polyline', {}), ('Vis_Circle', {}), ('System_Graphs', {}),
-                           ('Video_Export_Launcher', {}), ('Pupil_From_Recording', {}), ('Gaze_From_Recording', {})]
+                            ('System_Graphs', {}), ('Offline_Pupil_Detection', {}), ('Gaze_From_Recording', {})]
         g_pool.plugins = Plugin_List(g_pool, session_settings.get('loaded_plugins', default_plugins))
 
         # Register callbacks main_window
