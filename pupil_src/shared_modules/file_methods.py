@@ -84,6 +84,32 @@ def load_object(file_path,allow_legacy=True):
             gc.enable()
     return data
 
+def load_topic_payload_pairs(file_path):
+    import gc
+    file_path = os.path.expanduser(file_path)
+    with open(file_path, 'rb') as fh:
+        try:
+            gc.disable()  # speeds deserialization up.
+            unpacker = msgpack.Unpacker(fh, encoding='utf-8')
+            mapping = {}
+
+            def map_payload_to_topic(topic):
+                def map_payload(serialized):
+                    try:
+                        mapping[topic].append(DataProxy(serialized))
+                    except KeyError:
+                        mapping[topic] = [DataProxy(serialized)]
+                return map_payload
+
+            for topic in unpacker:
+                unpacker.skip(map_payload_to_topic(topic))
+
+        except Exception as e:
+            raise
+        finally:
+            gc.enable()
+    return mapping
+
 
 def save_object(object_, file_path):
 
