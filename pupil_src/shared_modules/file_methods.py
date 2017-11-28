@@ -42,6 +42,24 @@ class Persistent_Dict(dict):
         self.save()
 
 
+class DataProxy(object):
+    def __init__(self, serialized_bytes):
+        super().__init__()
+        self._serialized = serialized_bytes
+
+    @property
+    def serialized(self):
+        return self._serialized
+
+    def __getitem__(self, key):
+        return msgpack.unpackb(self._serialized, encoding='utf-8')[key]
+
+    def __setitem__(self, key, value):
+        unpacked = msgpack.unpackb(self._serialized, encoding='utf-8')
+        unpacked[key] = value
+        self._serialized = msgpack.packb(unpacked)
+
+
 def _load_object_legacy(file_path):
     file_path = os.path.expanduser(file_path)
     with open(file_path, 'rb') as fh:
@@ -153,33 +171,3 @@ if __name__ == '__main__':
 
             row = data_2d + ellipse_data
             csv_writer.writerow(row)
-
-
-class DataProxy(object):
-    def __init__(self, serialized_bytes):
-        super().__init__()
-        self._serialized = serialized_bytes
-
-    @property
-    def serialized(self):
-        return self._serialized
-
-    def __getitem__(self, key):
-        # u = msgpack.Unpacker(use_list=False, encoding='utf-8')
-        # u.feed(self.serialized)
-        # u.read_map_header()  # trigger 1-by-1 key reading
-        # try:
-        #     next_key = u.unpack()
-        #     while next_key != key:
-        #         u.skip()
-        #         next_key = u.unpack()
-        # except msgpack.OutOfData:
-        #     raise KeyError(key, msgpack.unpackb(self.serialized, use_list=False, encoding='utf-8'))
-        # else:
-        #     return u.unpack()
-        return msgpack.unpackb(self._serialized, encoding='utf-8')[key]
-
-    def __setitem__(self, key, value):
-        unpacked = msgpack.unpackb(self._serialized, encoding='utf-8')
-        unpacked[key] = value
-        self._serialized = msgpack.packb(unpacked)
