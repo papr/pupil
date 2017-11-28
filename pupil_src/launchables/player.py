@@ -15,6 +15,17 @@ import platform
 class Global_Container(object):
     pass
 
+import time
+
+class Timer(object):
+    def __init__(self, name):
+        self.name = name
+
+    def __enter__(self):
+        self.start = time.time()
+
+    def __exit__(self, *args):
+        print('{}: {:.5f}secs'.format(self.name, time.time() - self.start))
 
 # UI Platform tweaks
 if platform.system() == 'Linux':
@@ -60,7 +71,7 @@ def player(rec_dir, ipc_pub_url, ipc_sub_url,
     try:
 
         # imports
-        from file_methods import Persistent_Dict, load_object
+        from file_methods import Persistent_Dict, load_object, load_topic_payload_pairs
 
         # display
         import glfw
@@ -219,8 +230,26 @@ def player(rec_dir, ipc_pub_url, ipc_sub_url,
             logger.warning(icon_bar_width*g_pool.gui_user_scale*hdpi_factor)
             glfw.glfwSetWindowSize(main_window, *window_size)
 
+
+        with Timer('pupil_data_flat'):
+            pupil_data_flat = load_topic_payload_pairs(pupil_data_path+'.flat')
+        for key, val in pupil_data_flat.items():
+            print('\t{}: {}'.format(key, len(val)))
+
+        with Timer('pupil_data'):
+            pupil_data = load_object(pupil_data_path)
+        for key, val in pupil_data.items():
+            print('\t{}: {}'.format(key, len(val)))
+
+        for n in pupil_data_flat['notifications']:
+            try:
+                import msgpack
+                print(msgpack.unpackb(n._serialized))
+            except Exception:
+                raise
+
         # load pupil_positions, gaze_positions
-        g_pool.pupil_data = load_object(pupil_data_path)
+        g_pool.pupil_data = pupil_data
         g_pool.binocular = meta_info.get('Eye Mode', 'monocular') == 'binocular'
         g_pool.version = app_version
         g_pool.timestamps = g_pool.capture.timestamps
