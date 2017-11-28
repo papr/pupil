@@ -193,6 +193,7 @@ class Recorder(System_Plugin_Base):
                 self.data['notifications'].append(notification)
                 self.pupil_data_fh.write(self.serializer.pack('notifications'))
                 self.pupil_data_fh.write(self.serializer.pack(notification))
+                self.pupil_data_fh.flush()
 
         elif notification['subject'] == 'recording.should_start':
             if self.running:
@@ -268,7 +269,7 @@ class Recorder(System_Plugin_Base):
             cal_data = load_object(cal_pt_path)
             notification = {'subject': 'calibration.calibration_data', 'record': True}
             notification.update(cal_data)
-            self.data['notifications'].append(notification)
+            self.on_notify(notification)
         except:
             pass
 
@@ -313,8 +314,9 @@ class Recorder(System_Plugin_Base):
                         self.data[key] = []
                         self.data[key] += data
 
-                    self.pupil_data_fh.write(self.serializer.pack(key))
-                    self.pupil_data_fh.write(self.serializer.pack(data))
+                    for payload in data:
+                        self.pupil_data_fh.write(self.serializer.pack(key))
+                        self.pupil_data_fh.write(self.serializer.pack(payload))
             self.pupil_data_fh.flush()
 
             if 'frame' in events:
