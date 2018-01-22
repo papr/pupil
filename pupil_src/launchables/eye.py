@@ -322,6 +322,8 @@ def eye(timebase, is_alive_flag, ipc_pub_url, ipc_sub_url, ipc_push_url,
         g_pool.gui_user_scale = session_settings.get('gui_scale', 1.)
         g_pool.menubar = ui.Scrolling_Menu("Settings", pos=(-500, 0), size=(-icon_bar_width, 0), header_pos='left')
         g_pool.iconbar = ui.Scrolling_Menu("Icons",pos=(-icon_bar_width,0),size=(0,0),header_pos='hidden')
+        g_pool.frame_view = ui.Container(pos=(0, 0), size=(-icon_bar_width, 0))
+        g_pool.gui.append(g_pool.frame_view)
         g_pool.gui.append(g_pool.menubar)
         g_pool.gui.append(g_pool.iconbar)
 
