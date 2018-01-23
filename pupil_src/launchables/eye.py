@@ -112,7 +112,6 @@ def eye(timebase, is_alive_flag, ipc_pub_url, ipc_sub_url, ipc_push_url,
         from gl_utils import make_coord_system_pixel_based
         from gl_utils import make_coord_system_norm_based
         from gl_utils import is_window_visible, glViewport
-        from ui_roi import UIRoi
         # monitoring
         import psutil
 
@@ -120,7 +119,7 @@ def eye(timebase, is_alive_flag, ipc_pub_url, ipc_sub_url, ipc_push_url,
         from uvc import get_time_monotonic
         from file_methods import Persistent_Dict
         from version_utils import VersionFormat
-        from methods import normalize, denormalize, timer
+        from methods import normalize, denormalize, timer, Roi
         from av_writer import JPEG_Writer, AV_Writer
         from ndsi import H264Writer
         from video_capture import source_classes
@@ -202,13 +201,6 @@ def eye(timebase, is_alive_flag, ipc_pub_url, ipc_sub_url, ipc_push_url,
             y *= hdpi_factor
             g_pool.gui.update_mouse(x, y)
 
-            if g_pool.u_r.active_edit_pt:
-                pos = normalize((x, y), camera_render_size)
-                if g_pool.flip:
-                    pos = 1 - pos[0], 1 - pos[1]
-                pos = denormalize(pos, g_pool.capture.frame_size)
-                g_pool.u_r.move_vertex(g_pool.u_r.active_pt_idx, pos)
-
         def on_scroll(window, x, y):
             g_pool.gui.update_scroll(x, y * scroll_factor)
 
@@ -258,10 +250,12 @@ def eye(timebase, is_alive_flag, ipc_pub_url, ipc_sub_url, ipc_push_url,
         g_pool.capture = source_class_by_name[source_class_name](g_pool,**source_settings)
         assert g_pool.capture
 
-        g_pool.u_r = UIRoi((g_pool.capture.frame_size[1],g_pool.capture.frame_size[0]))
+        g_pool.u_r = Roi(g_pool.capture.frame_size)
         roi_user_settings = session_settings.get('roi')
         if roi_user_settings and tuple(roi_user_settings[-1]) == g_pool.u_r.get()[-1]:
             g_pool.u_r.set(roi_user_settings)
+
+        g_pool.u_r.set((101, 101, 201, 201))
 
         pupil_detector_settings = session_settings.get(
             'pupil_detector_settings', None)
@@ -335,32 +329,11 @@ def eye(timebase, is_alive_flag, ipc_pub_url, ipc_sub_url, ipc_push_url,
 
         def set_window_size():
             f_width, f_height = g_pool.capture.frame_size
-            f_width *= 2
-            f_height *= 2
+            if f_width < 400:
+                f_width *= 2
+                f_height *= 2
             f_width += int(icon_bar_width * g_pool.gui.scale)
             glfw.glfwSetWindowSize(main_window, f_width, f_height)
-
-        def uroi_on_mouse_button(button, action, mods):
-            if g_pool.display_mode == 'roi':
-                if action == glfw.GLFW_RELEASE and g_pool.u_r.active_edit_pt:
-                    g_pool.u_r.active_edit_pt = False
-                    # if the roi interacts we dont want
-                    # the gui to interact as well
-                    return
-                elif action == glfw.GLFW_PRESS:
-                    x, y = glfw.glfwGetCursorPos(main_window)
-                    # pos = normalize(pos, glfw.glfwGetWindowSize(main_window))
-                    x *= hdpi_factor
-                    y *= hdpi_factor
-                    pos = normalize((x, y), camera_render_size)
-                    if g_pool.flip:
-                        pos = 1 - pos[0], 1 - pos[1]
-                    # Position in img pixels
-                    pos = denormalize(pos, g_pool.capture.frame_size)  # Position in img pixels
-                    if g_pool.u_r.mouse_over_edit_pt(pos, g_pool.u_r.handle_size, g_pool.u_r.handle_size):
-                        # if the roi interacts we dont want
-                        # the gui to interact as well
-                        return
 
         general_settings.append(ui.Button('Reset window size', set_window_size))
         general_settings.append(ui.Switch('flip',g_pool,label='Flip image display'))
@@ -368,7 +341,7 @@ def eye(timebase, is_alive_flag, ipc_pub_url, ipc_sub_url, ipc_push_url,
                                             g_pool,
                                             setter=set_display_mode_info,
                                             selection=['camera_image','roi','algorithm'],
-                                            labels=['Camera Image', 'ROI', 'Algorithm'],
+                                            labels=['Camera Image', 'Region of Interest', 'Algorithm'],
                                             label="Mode")
                                             )
         g_pool.display_mode_info = ui.Info_Text(g_pool.display_mode_info_text[g_pool.display_mode])
@@ -392,6 +365,8 @@ def eye(timebase, is_alive_flag, ipc_pub_url, ipc_sub_url, ipc_push_url,
         icon.tooltip = 'General Settings'
         g_pool.iconbar.append(icon)
         toggle_general_settings(False)
+
+        g_pool.frame_view.append(ui.Roi_Visualizer(g_pool))
 
         g_pool.pupil_detector.init_ui()
         g_pool.capture.init_ui()
@@ -522,10 +497,10 @@ def eye(timebase, is_alive_flag, ipc_pub_url, ipc_sub_url, ipc_push_url,
             frame = event.get('frame')
             g_pool.capture_manager.recent_events(event)
             if frame:
-                f_width, f_height = g_pool.capture.frame_size
-                if (g_pool.u_r.array_shape[0], g_pool.u_r.array_shape[1]) != (f_height, f_width):
-                    g_pool.pupil_detector.on_resolution_change((g_pool.u_r.array_shape[1], g_pool.u_r.array_shape[0]), g_pool.capture.frame_size)
-                    g_pool.u_r = UIRoi((f_height, f_width))
+                fs = g_pool.capture.frame_size
+                if g_pool.u_r.max_shape != fs:
+                    g_pool.pupil_detector.on_resolution_change((g_pool.u_r.max_shape[1], g_pool.u_r.max_shape[0]), g_pool.capture.frame_size)
+                    g_pool.u_r.reset_to_shape(fs)
                 if should_publish_frames:
                     try:
                         if frame_publish_format == "jpeg":
@@ -619,23 +594,15 @@ def eye(timebase, is_alive_flag, ipc_pub_url, ipc_sub_url, ipc_push_url,
                                             color=RGBA(1., 0., 0., confidence),
                                             sharpness=1.)
 
-                    glViewport(0, 0, *camera_render_size)
-                    make_coord_system_pixel_based((f_height, f_width, 3), g_pool.flip)
-                    # render the ROI
-                    g_pool.u_r.draw(g_pool.gui.scale)
-                    if g_pool.display_mode == 'roi':
-                        g_pool.u_r.draw_points(g_pool.gui.scale)
-
                     glViewport(0, 0, *window_size)
                     make_coord_system_pixel_based((*window_size[::-1], 3), g_pool.flip)
+
+                    # render GUI
+                    g_pool.gui.update()
+
                     # render graphs
                     fps_graph.draw()
                     cpu_graph.draw()
-
-                    # render GUI
-                    unused_elements = g_pool.gui.update()
-                    for butt in unused_elements.buttons:
-                        uroi_on_mouse_button(*butt)
 
                     make_coord_system_pixel_based((*window_size[::-1], 3), g_pool.flip)
 

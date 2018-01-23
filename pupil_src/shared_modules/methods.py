@@ -62,45 +62,55 @@ class Roi(object):
 
     this creates a view, no data copying done
     """
-    def __init__(self, array_shape):
-        self.array_shape = array_shape
-        self.lX = 0
-        self.lY = 0
-        self.uX = array_shape[1]
-        self.uY = array_shape[0]
-        self.nX = 0
-        self.nY = 0
 
-    @property
-    def view(self):
-        return slice(self.lY,self.uY,),slice(self.lX,self.uX)
+    __slots__ = ('max_shape', 'lX', 'lY', 'uX', 'uY')
 
-    @view.setter
-    def view(self, value):
-        raise Exception('The view field is read-only. Use the set methods instead')
+    def __init__(self, max_shape, lX=0, lY=0, uX=None, uY=None):
+        self.max_shape = tuple(max_shape)
+        self.lX = lX
+        self.lY = lY
+        self.uX = uX or max_shape[0] - 1
+        self.uY = uY or max_shape[1] - 1
 
-    def add_vector(self,vector):
-        """
-        adds the roi offset to a len2 vector
-        """
-        x,y = vector
-        return (self.lX+x,self.lY+y)
+    def img_slice(self, stride):
+        '''Returns (height, width) slices based on current roi'''
+        return slice(self.lY, self.uY, stride), slice(self.lX, self.uX, stride)
 
-    def sub_vector(self,vector):
-        """
-        subs the roi offset to a len2 vector
-        """
-        x,y = vector
-        return (x-self.lX,y-self.lY)
+    def reset_to_shape(self, shape):
+        self.set(Roi(shape).get())
 
-    def set(self,vals):
+    def set(self, vals):
         if vals is not None and len(vals) is 5:
-            self.lX,self.lY,self.uX,self.uY,self.array_shape = vals
+            self.lX,self.lY,self.uX,self.uY,self.max_shape = vals
         elif vals is not None and len(vals) is 4:
             self.lX,self.lY,self.uX,self.uY= vals
 
     def get(self):
-        return self.lX,self.lY,self.uX,self.uY,self.array_shape
+        return self.lX,self.lY,self.uX,self.uY,self.max_shape
+
+    def __eq__(self, other):
+        if isinstance(self, other.__class__):
+            return all((getattr(self, attr) == getattr(other, attr) for attr in self.__slots__))
+        return False
+
+    def __str__(self):
+        return f'Roi({self.max_shape}, x:{self.lX}-{self.uX}, y:{self.lY}-{self.uY})'
+
+    def translate(self, shape):
+        return Roi(max_shape=shape,
+                   lX=round(shape[0] * self.lX / self.max_shape[0]),
+                   lY=round(shape[1] * self.lY / self.max_shape[1]),
+                   uX=round(shape[0] * self.uX / self.max_shape[0]),
+                   uY=round(shape[1] * self.uY / self.max_shape[1]))
+
+    @property
+    def org(self):
+        return self.lX, self.lY
+
+    @property
+    def size(self):
+        return self.uX - self.lX, self.uY - self.lY
+
 
 
 def project_distort_pts(pts_xyz,camera_matrix, dist_coefs,  rvec = np.array([0,0,0], dtype=np.float32), tvec = np.array([0,0,0], dtype=np.float32) ):

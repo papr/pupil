@@ -19,7 +19,7 @@ cdef extern from 'singleeyefitter/mathHelper.h' namespace 'singleeyefitter::math
     Matrix21d cart2sph( Matrix31d& m )
 
 
-cdef inline convertTo2DPythonResult( Detector2DResult& result, object frame, object roi ):
+cdef inline convertTo2DPythonResult( Detector2DResult& result, object frame ):
 
 
     ellipse = {}

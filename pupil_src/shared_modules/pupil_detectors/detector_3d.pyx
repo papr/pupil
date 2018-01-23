@@ -124,19 +124,15 @@ cdef class Detector_3D:
             cv_image_color = Mat(image_height, image_width, CV_8UC3, <void *> &img_color[0,0,0] )
 
 
-        roi = Roi((0,0))
-        roi.set( user_roi.get() )
-        roi_x = roi.get()[0]
-        roi_y = roi.get()[1]
-        roi_width  = roi.get()[2] - roi.get()[0]
-        roi_height  = roi.get()[3] - roi.get()[1]
         cdef int[:,::1] integral
+        cdef int roi_x, roi_y, roi_width, roi_height
+        roi_x, roi_y = user_roi.org
+        roi_width, roi_height = user_roi.size
 
         if self.detectProperties2D['coarse_detection'] and image_width > 200:
             scale = 2 # half the integral image. boost up integral
             # TODO maybe implement our own Integral so we don't have to half the image
-            user_roi_image = frame.gray[user_roi.view]
-            integral = cv2.integral(user_roi_image[::scale,::scale])
+            integral = cv2.integral(frame.gray[user_roi.img_slice(scale)])
             coarse_filter_max = self.detectProperties2D['coarse_filter_max']
             coarse_filter_min = self.detectProperties2D['coarse_filter_min']
             bounding_box , good_ones , bad_ones = center_surround( integral, coarse_filter_min/scale , coarse_filter_max/scale )
@@ -172,7 +168,6 @@ cdef class Detector_3D:
             roi_y = y1 * scale + roi_y
             roi_width = width*scale
             roi_height = height*scale
-            roi.set((roi_x, roi_y, roi_x+roi_width, roi_y+roi_height))
 
         # every coordinates in the result are relative to the current ROI
         cpp2DResultPtr =  self.detector2DPtr.detect(self.detectProperties2D, cv_image, cv_image_color, debug_image, Rect_[int](roi_x,roi_y,roi_width,roi_height), visualize , False ) #we don't use debug image in 3d model

@@ -47,7 +47,7 @@ if __name__ == '__main__':
 
   Pool = namedtuple('Pool', 'user_dir');
   pool = Pool('/')
-  u_r = Roi(frame.img.shape)
+  u_r = Roi(frame.img.shape[::-1])
 
   #Our detectors we wanna compare
   detector_cpp = detector_2d.Detector_2D()
