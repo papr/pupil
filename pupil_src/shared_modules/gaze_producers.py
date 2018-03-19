@@ -24,6 +24,7 @@ from time import time
 from calibration_routines import gaze_mapping_plugins
 from calibration_routines.finish_calibration import select_calibration_method
 from file_methods import load_object, save_object
+from accuracy_visualizer import Accuracy_Visualizer
 
 import gl_utils
 import background_helper as bh
@@ -162,7 +163,6 @@ def calibrate_and_map(g_pool, ref_list, calib_list, map_list, x_offset, y_offset
         name, args = result['name'], result['args']
         gaze_mapper_cls = gaze_mapping_plugins_by_name[name]
         gaze_mapper = gaze_mapper_cls(g_pool, **args)
-
         for idx, datum in enumerate(map_list):
             mapped_gaze = gaze_mapper.on_pupil_datum(datum)
 
@@ -196,13 +196,18 @@ def make_section_dict(calib_range, map_range):
                 'status': 'unmapped',
                 'color': next(colors),
                 'gaze_positions': [],
+                'vis_mapping_error': True,
+                'error_lines': None,
+                'outlier_threshold': 5.,
+                'accuracy': 'Not available',
+                'precision': 'Not available',
                 'bg_task': None,
                 'x_offset': 0.,
                 'y_offset': 0.}
 
 
 class Offline_Calibration(Gaze_Producer_Base):
-    session_data_version = 8
+    session_data_version = 9
 
     def __init__(self, g_pool, manual_ref_edit_mode=False):
         super().__init__(g_pool)
@@ -283,7 +288,6 @@ class Offline_Calibration(Gaze_Producer_Base):
         self.menu.append(ui.Button('Use calibration markers as natural features', use_as_natural_features))
         self.menu.append(ui.Button('Jump to next natural feature', jump_next_natural_feature))
         self.menu.append(ui.Switch('manual_ref_edit_mode', self, label="Natural feature edit mode"))
-        self.menu.append(ui.Button('Clear natural features', clear_natural_features))
 
         self.menu.append(ui.Info_Text('Calibration only considers pupil data that has an equal or higher confidence than the minimum calibration confidence.'))
         self.menu.append(ui.Slider('min_calibration_confidence', self.g_pool,
@@ -298,6 +302,9 @@ class Offline_Calibration(Gaze_Producer_Base):
 
         for sec in self.sections:
             self.append_section_menu(sec)
+
+        self.menu.append(ui.Button('Clear natural features', clear_natural_features))
+
         self.on_window_resize(glfwGetCurrentContext(), *glfwGetWindowSize(glfwGetCurrentContext()))
 
     def deinit_ui(self):
@@ -377,7 +384,20 @@ class Offline_Calibration(Gaze_Producer_Base):
         mapping_range_button.function(format_only=True)  # set initial label
         section_menu.append(mapping_range_button)
 
+        section_menu.append(ui.Text_Input('outlier_threshold', sec,
+                                          label='Outlier Threshold [degrees]'))
+
         section_menu.append(ui.Button('Recalibrate', make_calibrate_fn(sec)))
+
+        section_menu.append(ui.Switch('vis_mapping_error', sec,
+                                      label='Visualize mapping error'))
+        section_menu.append(ui.Text_Input('accuracy', sec,
+                                          label='Angular Accuracy',
+                                          setter=lambda _: _))
+        section_menu.append(ui.Text_Input('precision', sec,
+                                          label='Angular Precision',
+                                          setter=lambda _: _))
+
         section_menu.append(ui.Button('Remove section', make_remove_fn(sec)))
 
         # manual gaze correction menu
@@ -448,6 +468,7 @@ class Offline_Calibration(Gaze_Producer_Base):
                     sec['gaze_positions'].extend(chain(*data))
                     sec['status'] = progress[-1]
                 if sec["bg_task"].completed:
+                    self.calc_accuracy(sec)
                     self.correlate_and_publish()
                     sec['bg_task'] = None
 
@@ -456,6 +477,33 @@ class Offline_Calibration(Gaze_Producer_Base):
         self.g_pool.gaze_positions = sorted(all_gaze, key=lambda d: d['timestamp'])
         self.g_pool.gaze_positions_by_frame = correlate_data(self.g_pool.gaze_positions, self.g_pool.timestamps)
         self.notify_all({'subject': 'gaze_positions_changed', 'delay':1})
+
+    def calc_accuracy(self, section):
+        predictions = section['gaze_positions']
+
+        start = section['mapping_range'][0]
+        end = section['mapping_range'][1]
+
+        if section['calibration_method'] == 'circle_marker':
+            ref_list = self.circle_marker_positions
+        elif section['calibration_method'] == 'natural_features':
+            ref_list = self.manual_ref_positions
+        labels = [r for r in ref_list if start <= r['index'] <= end]
+
+        if not labels or not predictions:
+            return
+
+        acc_calc = Accuracy_Visualizer(self.g_pool, outlier_threshold=section['outlier_threshold'])
+        results = acc_calc.calc_acc_prec_errlines(predictions, labels, self.g_pool.capture.intrinsics)
+
+        logger.info('Angular accuracy for {}: {}. Used {} of {} samples.'
+                    .format(section['label'], *results[0]))
+        logger.info("Angular precision for {}: {}. Used {} of {} samples."
+                    .format(section['label'], *results[1]))
+        section['accuracy'] = results[0].result
+        section['precision'] = results[1].result
+        section['error_lines'] = results[2]
+        acc_calc.alive = False
 
     def calibrate_section(self, sec):
         if sec['bg_task']:
@@ -527,6 +575,12 @@ class Offline_Calibration(Gaze_Producer_Base):
                     draw_progress(mr['norm_pos'], 0., 0.999, inner_radius=20.,
                                   outer_radius=35., color=RGBA(.0, .0, 0.9, alpha))
                     draw_points([mr['norm_pos']], size=5, color=RGBA(.0, .9, 0.0, alpha))
+
+        for sec in self.sections:
+            if sec['vis_mapping_error'] and sec['error_lines'] is not None:
+                draw_polyline_norm(sec['error_lines'],
+                                   color=RGBA(*sec['color']),
+                                   line_type=gl.GL_LINES)
 
         # calculate correct timeline height. Triggers timeline redraw only if changed
         self.timeline.content_height = max(0.001, self.timeline_line_height * len(self.sections))
@@ -615,6 +669,9 @@ class Offline_Calibration(Gaze_Producer_Base):
             sec = s.copy()
             sec['bg_task'] = None
             sec['gaze_positions'] = []
+            sec['error_lines'] = []
+            sec['accuracy'] = 'Not available'
+            sec['precision'] = 'Not available'
             session_data['sections'].append(sec)
         session_data['version'] = self.session_data_version
         session_data['manual_ref_positions'] = self.manual_ref_positions

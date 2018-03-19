@@ -45,8 +45,8 @@ class Accuracy_Visualizer(Plugin):
         self.vis_mapping_error = vis_mapping_error
         self.vis_calibration_area = vis_calibration_area
         self.calibration_area = None
-        self.accuracy = None
-        self.precision = None
+        self.accuracy = 'Not available'
+        self.precision = 'Not available'
         self.error_lines = None
         self.recent_input = None
         self.recent_labels = None
@@ -72,7 +72,6 @@ class Accuracy_Visualizer(Plugin):
         self.menu.append(ui.Info_Text(calib_area_help))
         self.menu.append(ui.Switch('vis_mapping_error', self,
                                    label='Visualize mapping error'))
-
 
         self.menu.append(ui.Info_Text(mapping_error_help))
         self.menu.append(ui.Switch('vis_calibration_area', self,
@@ -101,13 +100,11 @@ class Accuracy_Visualizer(Plugin):
         self.menu.append(ui.Info_Text(accuracy_help))
         self.menu.append(ui.Text_Input('accuracy', self,
                                        'Angular Accuracy',
-                                       setter=ignore,
-                                       getter=lambda: self.accuracy if self.accuracy is not None else 'Not available'))
+                                       setter=ignore))
         self.menu.append(ui.Info_Text(precision_help))
         self.menu.append(ui.Text_Input('precision', self,
                                        'Angular Precision',
-                                       setter=ignore,
-                                       getter=lambda: self.precision if self.precision is not None else 'Not available'))
+                                       setter=ignore))
 
     def deinit_ui(self):
         self.remove_menu()
