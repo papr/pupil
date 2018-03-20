@@ -156,7 +156,7 @@ class Gaze_From_Recording(Gaze_Producer_Base):
 
 
 def calibrate_and_map(g_pool, ref_list, calib_list, map_list, x_offset, y_offset):
-    yield "calibrating", []
+    yield "Calibrating...", [], None
     method, result = select_calibration_method(g_pool, calib_list, ref_list)
     if result['subject'] != 'calibration.failed':
         logger.info('Offline calibration successful. Starting mapping using {}.'.format(method))
@@ -177,18 +177,29 @@ def calibrate_and_map(g_pool, ref_list, calib_list, map_list, x_offset, y_offset
             if mapped_gaze:
                 progress = (100 * (idx+1)/len(map_list))
                 progress = "Mapping..{}%".format(int(progress))
-                yield progress, mapped_gaze
+                yield progress, mapped_gaze, None
         progress = "Mapping complete."
-        yield progress, []
+        yield progress, [], {k: result[k] for k in result if k in ('name', 'args')}
     else:
         # logger does not work here, because we are in a subprocess
         print('Calibration failed: {}'.format(result['reason']))
-        yield "calibration failed", []
+        yield "calibration failed", [], None
 
 
-def make_section_dict(calib_range, map_range):
+def make_section_label(existing_labels=()):
+    counter = 1
+    while True:
+        label = 'Unnamed section {}'.format(counter)
+        if label in existing_labels:
+            counter += 1
+        else:
+            return label
+
+
+def make_section_dict(label, calib_range, map_range):
         return {'uid': np.random.rand(),  # ensures unique entry in self.sections
-                'label': 'Unnamed section',
+                'label': label,
+                'calibration': None,
                 'calibration_range': calib_range,
                 'mapping_range': map_range,
                 'mapping_method': '3d',
@@ -208,6 +219,7 @@ def make_section_dict(calib_range, map_range):
 
 class Offline_Calibration(Gaze_Producer_Base):
     session_data_version = 9
+    calibration_version = 1
 
     def __init__(self, g_pool, manual_ref_edit_mode=False):
         super().__init__(g_pool)
@@ -226,7 +238,9 @@ class Offline_Calibration(Gaze_Producer_Base):
         except Exception as e:
             session_data = {}
             max_idx = len(self.g_pool.timestamps) - 1
-            session_data['sections'] = [make_section_dict((0, max_idx), (0, max_idx))]
+            session_data['sections'] = [make_section_dict(make_section_label(),
+                                                          (0, max_idx),
+                                                          (0, max_idx))]
             session_data['circle_marker_positions'] = []
             session_data['manual_ref_positions'] = []
         self.sections = session_data['sections']
@@ -242,7 +256,9 @@ class Offline_Calibration(Gaze_Producer_Base):
 
     def append_section(self):
         max_idx = len(self.g_pool.timestamps) - 1
-        sec = make_section_dict((0, max_idx), (0, max_idx))
+        existing_labels = [sec['label'] for sec in self.sections]
+        sec = make_section_dict(make_section_label(existing_labels),
+                                (0, max_idx), (0, max_idx))
         self.sections.append(sec)
         if self.menu is not None:
             self.append_section_menu(sec)
@@ -319,18 +335,15 @@ class Offline_Calibration(Gaze_Producer_Base):
         section_menu = ui.Growing_Menu('Section Settings')
         section_menu.color = RGBA(*sec['color'])
 
-        def make_validate_fn(sec, key):
-            def validate(input_obj):
-                try:
-                    assert type(input_obj) in (tuple,list)
-                    assert type(input_obj[0]) is int
-                    assert type(input_obj[1]) is int
-                    assert 0 <= input_obj[0] <= input_obj[1] <=len(self.g_pool.timestamps)
-                except:
-                    pass
+        def make_validate_label_fn(sec):
+            def validate_label(input_obj):
+                if input_obj == sec['label']:
+                    return
+                elif input_obj in (s['label'] for s in self.sections):
+                    logger.warning('Duplicated section label')
                 else:
-                    sec[key] = input_obj
-            return validate
+                    sec['label'] = input_obj
+            return validate_label
 
         def make_calibrate_fn(sec):
             def calibrate():
@@ -364,7 +377,8 @@ class Offline_Calibration(Gaze_Producer_Base):
                 button.outer_label = time_fmt[:-2]  # remove final ' -'
             button.function = trim
 
-        section_menu.append(ui.Text_Input('label', sec, label='Label'))
+        section_menu.append(ui.Text_Input('label', sec, label='Label',
+                            setter=make_validate_label_fn(sec)))
         section_menu.append(ui.Selector('calibration_method', sec,
                                         label="Calibration Method",
                                         labels=['Circle Marker', 'Natural Features'],
@@ -464,11 +478,13 @@ class Offline_Calibration(Gaze_Producer_Base):
             if sec["bg_task"]:
                 recent = [d for d in sec["bg_task"].fetch()]
                 if recent:
-                    progress, data = zip(*recent)
+                    progress, data, calibration = zip(*recent)
                     sec['gaze_positions'].extend(chain(*data))
                     sec['status'] = progress[-1]
+                    sec['calibration'] = calibration[-1]
                 if sec["bg_task"].completed:
                     self.calc_accuracy(sec)
+                    self.save_calibration(sec)
                     self.correlate_and_publish()
                     sec['bg_task'] = None
 
@@ -682,3 +698,12 @@ class Offline_Calibration(Gaze_Producer_Base):
         cache_path = os.path.join(self.result_dir, 'offline_calibration_gaze')
         save_object(session_data, cache_path)
         logger.info('Cached offline calibration data to {}'.format(cache_path))
+
+    def save_calibration(self, sec):
+        if not sec['calibration']:
+            logger.warning('No calibration availableto save for {}'.format(sec['label']))
+            return
+        calibration = sec['calibration'].copy()
+        calibration['version'] = self.calibration_version
+        cache_path = os.path.join(self.result_dir, '{}.calibration'.format(sec['label']))
+        save_object(calibration, cache_path)
