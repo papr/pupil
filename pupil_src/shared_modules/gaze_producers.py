@@ -11,6 +11,7 @@ See COPYING and COPYING.LESSER for license details.
 
 import os
 import numpy as np
+from collections import deque
 from copy import deepcopy
 from pyglui import ui
 from plugin import Producer_Plugin_Base
@@ -217,8 +218,34 @@ def make_section_dict(label, calib_range, map_range):
                 'y_offset': 0.}
 
 
+def cluster_start_indeces(timestamps, max_sample_distance, min_cluster_size):
+    current_cluster = deque()
+
+    prev_t = -np.inf
+    for idx, next_t in enumerate(timestamps):
+        if next_t - prev_t <= max_sample_distance:
+            # append previous idc as long as sample distance criterion is met
+            current_cluster.append(idx - 1)
+        elif len(current_cluster) + 1 >= min_cluster_size:
+            # sample distance criterion broken, but minimum cluster size
+            # criterion is met. yield inclusive start and exclusive end idc
+            current_cluster.append(idx - 1)
+            yield current_cluster[0], idx
+            current_cluster.clear()  # reset cluster
+        else:
+            # sample distance criterion broken
+            current_cluster.clear()  # reset cluster
+
+        prev_t = next_t
+
+    # yield
+    if len(current_cluster) + 1 >= min_cluster_size:
+        current_cluster.append(idx - 1)
+        yield current_cluster[0], idx
+
+
 class Offline_Calibration(Gaze_Producer_Base):
-    session_data_version = 9
+    session_data_version = 10
     calibration_version = 1
 
     def __init__(self, g_pool, manual_ref_edit_mode=False):
@@ -243,9 +270,13 @@ class Offline_Calibration(Gaze_Producer_Base):
                                                           (0, max_idx))]
             session_data['circle_marker_positions'] = []
             session_data['manual_ref_positions'] = []
+            session_data['min_cluster_size'] = 5
+            session_data['max_cluster_sample_distance'] = 1.0
         self.sections = session_data['sections']
         self.circle_marker_positions = session_data['circle_marker_positions']
         self.manual_ref_positions = session_data['manual_ref_positions']
+        self.min_cluster_size = session_data['min_cluster_size']
+        self.max_cluster_sample_distance = session_data['max_cluster_sample_distance']
         if self.circle_marker_positions:
             self.detection_progress = 100.0
             for s in self.sections:
@@ -261,6 +292,47 @@ class Offline_Calibration(Gaze_Producer_Base):
                                 (0, max_idx), (0, max_idx))
         self.sections.append(sec)
         if self.menu is not None:
+            self.append_section_menu(sec)
+
+    def create_automatic_sections(self):
+        timestamps = (m['timestamp'] for m in self.circle_marker_positions)
+        clusters = cluster_start_indeces(timestamps,
+                                         self.max_cluster_sample_distance,
+                                         self.min_cluster_size)
+
+        # iterate over all marker clusters
+        new_secs = deque()
+        existing_labels = [sec['label'] for sec in self.sections]
+        for start_marker_idx, stop_marker_idx in clusters:
+            start_marker = self.circle_marker_positions[start_marker_idx]
+            stop_marker = self.circle_marker_positions[stop_marker_idx]
+            cluster_range = (start_marker['index'], stop_marker['index'])
+            sec = make_section_dict(make_section_label(existing_labels),
+                                    cluster_range, cluster_range)
+            existing_labels.append(sec['label'])
+            new_secs.append(sec)
+
+        if not new_secs:
+            logger.warning('No marker clusters found. Was the marker detection performed?')
+            return
+
+        sec_iter = iter(new_secs)
+
+        prev_sec = next(sec_iter)
+        # set mapping range start of first section to 0
+        prev_sec['mapping_range'] = 0, prev_sec['mapping_range'][1]
+
+        for next_sec in sec_iter:
+            # set previous mapping range to stop on next section
+            prev_sec['mapping_range'] = prev_sec['mapping_range'][0], next_sec['mapping_range'][0]
+            prev_sec = next_sec
+
+        # last section's mapping range ends with recording
+        max_idx = len(self.g_pool.timestamps) - 1
+        prev_sec['mapping_range'] = prev_sec['mapping_range'][0], max_idx
+
+        for sec in new_secs:
+            self.sections.append(sec)
             self.append_section_menu(sec)
 
     def init_ui(self):
@@ -310,7 +382,14 @@ class Offline_Calibration(Gaze_Producer_Base):
                                    step=.01, min=0.0, max=1.0,
                                    label='Minimum calibration confidence'))
 
-        self.menu.append(ui.Button('Add section', self.append_section))
+        self.menu.append(ui.Button('Add default section', self.append_section))
+
+        self.menu.append(ui.Info_Text('<! EXPLAIN !>'))
+        self.menu.append(ui.Text_Input('min_cluster_size', self,
+                                       label='Minimum cluster size'))
+        self.menu.append(ui.Text_Input('max_cluster_sample_distance', self,
+                                       label='Maxmimum sample distance [sec]'))
+        self.menu.append(ui.Button('Create sections automatically', self.create_automatic_sections))
 
         # set to minimum height
         self.timeline = ui.Timeline('Calibration Sections', self.draw_sections, self.draw_labels, 1)
@@ -691,6 +770,8 @@ class Offline_Calibration(Gaze_Producer_Base):
             session_data['sections'].append(sec)
         session_data['version'] = self.session_data_version
         session_data['manual_ref_positions'] = self.manual_ref_positions
+        session_data['min_cluster_size'] = self.min_cluster_size
+        session_data['max_cluster_sample_distance'] = self.max_cluster_sample_distance
         if self.detection_progress == 100.0:
             session_data['circle_marker_positions'] = self.circle_marker_positions
         else:
