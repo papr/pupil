@@ -195,10 +195,14 @@ def make_section_label(existing_labels=()):
         else:
             return label
 
+CREATE_CALIBRATION = 'Create calibration'
+IMPORT_CALIBRATION = 'Import calibration'
+TEST_CALIBRATION = 'Test calibration'
+
 
 def make_section_dict(label, calib_range, map_range):
-        return {'uid': np.random.rand(),  # ensures unique entry in self.sections
-                'label': label,
+        return {'label': label,
+                'type': CREATE_CALIBRATION,
                 'calibration': None,
                 'calibration_range': calib_range,
                 'mapping_range': map_range,
@@ -217,8 +221,108 @@ def make_section_dict(label, calib_range, map_range):
                 'y_offset': 0.}
 
 
+class Section(object):
+    types = [CREATE_CALIBRATION, IMPORT_CALIBRATION, TEST_CALIBRATION]
+
+    def __init__(self, parent, sec):
+        self.parent = parent
+        self.sec = sec
+
+    def init_ui(self):
+        self.menu = ui.Growing_Menu(self.menu_title)
+        self.parent.menu.append(self.menu)
+        self.update_ui()
+
+    def update_ui(self):
+        del self.menu[:]
+
+        self.menu.append(ui.Text_Input('label', self.sec, label='Label',
+                                       setter=self.validate_label))
+
+        self.menu.append(ui.Selector('type', self.sec, label="Section Type",
+                                     selection=self.types, setter=self.set_type))
+
+        if self['type'] == CREATE_CALIBRATION:
+            self.append_create_calib_ui()
+        elif self['type'] == IMPORT_CALIBRATION:
+            self.append_import_calib_ui()
+        elif self['type'] == TEST_CALIBRATION:
+            self.append_test_calib_ui()
+
+        # manual gaze correction menu
+        offset_menu = ui.Growing_Menu('Manual Correction')
+        offset_menu.append(ui.Info_Text('The manual correction feature allows you to apply' +
+                                        ' a fixed offset to your gaze data.'))
+        offset_menu.append(ui.Slider('x_offset', self.sec, min=-.5, step=0.01, max=.5))
+        offset_menu.append(ui.Slider('y_offset', self.sec, min=-.5, step=0.01, max=.5))
+        offset_menu.collapsed = True
+        self.menu.append(offset_menu)
+
+        self.menu.append(ui.Button('Remove section', self.remove))
+
+    def append_create_calib_ui(self):
+        self.menu.append(ui.Info_Text(CREATE_CALIBRATION.upper()))
+
+    def append_import_calib_ui(self):
+        self.menu.append(ui.Info_Text(IMPORT_CALIBRATION.upper()))
+
+    def append_test_calib_ui(self):
+        self.menu.append(ui.Info_Text(TEST_CALIBRATION.upper()))
+
+    def deinit_ui(self):
+        self.parent.menu.remove(self.menu)
+        self.menu = None
+
+    def cleanup(self):
+        pass
+
+    @property
+    def menu_title(self):
+        return 'Section Settings - {}'.format(self['label'])
+
+    def validate_label(self, input_obj):
+        if input_obj == self['label']:
+            return
+        elif input_obj in (s['label'] for s in self.parent.sections):
+            logger.warning('Duplicated section label')
+        else:
+            self['label'] = input_obj
+            self.menu.label = self.menu_title
+
+    def set_type(self, type_):
+        if type_ == self['type']:
+            return
+        self['type'] = type_
+        self.update_ui()
+
+    def remove(self):
+        self.deinit_ui()
+        self.parent.sections.remove(self)
+        self.cleanup()
+
+    def recent_events(self):
+        if self["bg_task"]:
+            recent = [d for d in self["bg_task"].fetch()]
+            if recent:
+                progress, data, calibration = zip(*recent)
+                self['gaze_positions'].extend(chain(*data))
+                self['status'] = progress[-1]
+                self['calibration'] = calibration[-1]
+            if self["bg_task"].completed:
+                self['bg_task'] = None
+
+    def __getitem__(self, key):
+        return self.sec[key]
+
+    def __setitem__(self, key, value):
+        self.sec[key] = value
+
+    def copy(self):
+        return self.sec.copy()
+
+
 class Offline_Calibration(Gaze_Producer_Base):
-    session_data_version = 9
+    session_data_version = 10
     calibration_version = 1
 
     def __init__(self, g_pool, manual_ref_edit_mode=False):
@@ -243,7 +347,7 @@ class Offline_Calibration(Gaze_Producer_Base):
                                                           (0, max_idx))]
             session_data['circle_marker_positions'] = []
             session_data['manual_ref_positions'] = []
-        self.sections = session_data['sections']
+        self.sections = [Section(self, sec) for sec in session_data['sections']]
         self.circle_marker_positions = session_data['circle_marker_positions']
         self.manual_ref_positions = session_data['manual_ref_positions']
         if self.circle_marker_positions:
@@ -318,7 +422,7 @@ class Offline_Calibration(Gaze_Producer_Base):
         self.g_pool.user_timelines.append(self.timeline)
 
         for sec in self.sections:
-            self.append_section_menu(sec)
+            sec.init_ui()
 
         self.on_window_resize(glfwGetCurrentContext(), *glfwGetWindowSize(glfwGetCurrentContext()))
 
@@ -474,18 +578,19 @@ class Offline_Calibration(Gaze_Producer_Base):
             self.menu_icon.indicator_stop = self.detection_progress / 100.
 
         for sec in self.sections:
-            if sec["bg_task"]:
-                recent = [d for d in sec["bg_task"].fetch()]
-                if recent:
-                    progress, data, calibration = zip(*recent)
-                    sec['gaze_positions'].extend(chain(*data))
-                    sec['status'] = progress[-1]
-                    sec['calibration'] = calibration[-1]
-                if sec["bg_task"].completed:
-                    self.calc_accuracy(sec)
-                    self.save_calibration(sec)
-                    self.correlate_and_publish()
-                    sec['bg_task'] = None
+            sec.recent_events()
+            # if sec["bg_task"]:
+            #     recent = [d for d in sec["bg_task"].fetch()]
+            #     if recent:
+            #         progress, data, calibration = zip(*recent)
+            #         sec['gaze_positions'].extend(chain(*data))
+            #         sec['status'] = progress[-1]
+            #         sec['calibration'] = calibration[-1]
+            #     if sec["bg_task"].completed:
+            #         self.calc_accuracy(sec)
+            #         self.save_calibration(sec)
+            #         self.correlate_and_publish()
+            #         sec['bg_task'] = None
 
     def correlate_and_publish(self):
         all_gaze = list(chain(*[s['gaze_positions'] for s in self.sections]))
