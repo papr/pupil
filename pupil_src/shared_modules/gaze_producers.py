@@ -376,6 +376,7 @@ class Offline_Calibration(Gaze_Producer_Base):
         self.menu.append(ui.Button('Use calibration markers as natural features', use_as_natural_features))
         self.menu.append(ui.Button('Jump to next natural feature', jump_next_natural_feature))
         self.menu.append(ui.Switch('manual_ref_edit_mode', self, label="Natural feature edit mode"))
+        self.menu.append(ui.Button('Clear natural features', clear_natural_features))
 
         self.menu.append(ui.Info_Text('Calibration only considers pupil data that has an equal or higher confidence than the minimum calibration confidence.'))
         self.menu.append(ui.Slider('min_calibration_confidence', self.g_pool,
@@ -397,8 +398,6 @@ class Offline_Calibration(Gaze_Producer_Base):
 
         for sec in self.sections:
             self.append_section_menu(sec)
-
-        self.menu.append(ui.Button('Clear natural features', clear_natural_features))
 
         self.on_window_resize(glfwGetCurrentContext(), *glfwGetWindowSize(glfwGetCurrentContext()))
 
