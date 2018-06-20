@@ -162,19 +162,13 @@ class Accuracy_Visualizer(Plugin):
         error_lines = locations.copy()  # n x 4
         locations[:, ::2] *= width
         locations[:, 1::2] = (1. - locations[:, 1::2]) * height
+        locations.shape = -1, 2
 
         # Accuracy is calculated as the average angular
         # offset (distance) (in degrees of visual angle)
         # between fixations locations and the corresponding
         # locations of the fixation targets.
-        undistorted = intrinsics.undistortPoints(locations)
-        undistorted.shape = -1, 2
-        # append column with z=1
-        # using idea from https://stackoverflow.com/questions/8486294/how-to-add-an-extra-column-to-an-numpy-array
-        undistorted_3d = np.ones((undistorted.shape[0], 3))  # shape: 2n x 3
-        undistorted_3d[:, :-1] = undistorted
-        # normalize vectors:
-        undistorted_3d /= np.linalg.norm(undistorted_3d, axis=1)[:, np.newaxis]
+        undistorted_3d = intrinsics.unprojectPoints(locations, normalize=True)
 
         # Cosine distance of A and B: (A @ B) / (||A|| * ||B||)
         # No need to calculate norms, since A and B are normalized in our case.
@@ -188,7 +182,7 @@ class Accuracy_Visualizer(Plugin):
         num_used, num_total = selected_samples.shape[0], angular_err.shape[0]
 
         error_lines = error_lines[selected_indices].reshape(-1, 2)  # shape: num_used x 2
-        accuracy = np.rad2deg(np.arccos(selected_samples.mean()))
+        accuracy = np.rad2deg(np.arccos(selected_samples.clip(-1., 1.).mean()))
         accuracy_result = Calculation_Result(accuracy, num_used, num_total)
 
         # lets calculate precision:  (RMS of distance of succesive samples.)
@@ -208,7 +202,7 @@ class Accuracy_Visualizer(Plugin):
                                           succesive_distances_ref > self.succession_threshold)
         succesive_distances = succesive_distances_gaze[selected_indices]
         num_used, num_total = succesive_distances.shape[0], succesive_distances_gaze.shape[0]
-        precision = np.sqrt(np.mean(np.arccos(succesive_distances) ** 2))
+        precision = np.sqrt(np.mean(np.rad2deg(np.arccos(succesive_distances.clip(-1., 1.))) ** 2))
         precision_result = Calculation_Result(precision, num_used, num_total)
 
         return accuracy_result, precision_result, error_lines
@@ -229,4 +223,5 @@ class Accuracy_Visualizer(Plugin):
 
     def get_init_dict(self):
         return {'outlier_threshold': self.outlier_threshold,
-                'vis_mapping_error': self.vis_mapping_error}
+                'vis_mapping_error': self.vis_mapping_error,
+                'vis_calibration_area': self.vis_calibration_area}

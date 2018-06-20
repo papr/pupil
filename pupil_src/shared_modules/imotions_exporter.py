@@ -20,7 +20,7 @@ from fractions import Fraction
 import numpy as np
 from pyglui import ui
 from plugin import Analysis_Plugin_Base
-from video_capture import File_Source, EndofVideoFileError
+from video_capture import File_Source, EndofVideoError
 from methods import denormalize
 import background_helper as bh
 import csv_utils
@@ -63,7 +63,7 @@ def export_undistorted_h264(distorted_video_loc, target_video_loc, export_range)
     while True:
         try:
             frame = capture.get_frame()
-        except EndofVideoFileError:
+        except EndofVideoError:
             break
 
         if frame.index > export_range[1]:
@@ -204,9 +204,7 @@ class iMotions_Exporter(Analysis_Plugin_Base):
                             pupil_dia[p['id']] = p['diameter_3d']
 
                         pixel_pos = denormalize(g['norm_pos'], self.g_pool.capture.frame_size, flip_y=True)
-                        undistorted2d = self.g_pool.capture.intrinsics.undistortPoints(pixel_pos)
-                        undistorted3d = np.ones(3)
-                        undistorted3d[:2] = undistorted2d
+                        undistorted3d = self.g_pool.capture.intrinsics.unprojectPoints(pixel_pos)
                         undistorted2d = self.g_pool.capture.intrinsics.projectPoints(undistorted3d, use_distortion=False)
 
                         data = (g['timestamp'],

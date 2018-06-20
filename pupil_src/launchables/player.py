@@ -50,7 +50,7 @@ def player(rec_dir, ipc_pub_url, ipc_sub_url,
     logging.getLogger("OpenGL").setLevel(logging.ERROR)
     logger = logging.getLogger()
     logger.handlers = []
-    logger.setLevel(logging.INFO)
+    logger.setLevel(logging.NOTSET)
     logger.addHandler(zmq_tools.ZMQ_handler(zmq_ctx, ipc_push_url))
     # create logger for the context of this function
     logger = logging.getLogger(__name__)
@@ -104,8 +104,9 @@ def player(rec_dir, ipc_pub_url, ipc_sub_url,
         from system_timelines import System_Timelines
         from blink_detection import Offline_Blink_Detection
         from audio_playback import Audio_Playback
+        from imotions_exporter import iMotions_Exporter
 
-        assert VersionFormat(pyglui_version) >= VersionFormat('1.20'), 'pyglui out of date, please upgrade to newest version'
+        assert VersionFormat(pyglui_version) >= VersionFormat('1.22'), 'pyglui out of date, please upgrade to newest version'
 
         runtime_plugins = import_runtime_plugins(os.path.join(user_dir, 'plugins'))
         system_plugins = [Log_Display, Seek_Control, Plugin_Manager, System_Graphs, Batch_Export, System_Timelines, Audio_Playback]
@@ -128,6 +129,7 @@ def player(rec_dir, ipc_pub_url, ipc_sub_url,
                         Pupil_From_Recording,
                         Offline_Pupil_Detection,
                         Gaze_From_Recording,
+                        iMotions_Exporter,
                         Offline_Calibration
                         ] + runtime_plugins
 
@@ -137,7 +139,8 @@ def player(rec_dir, ipc_pub_url, ipc_sub_url,
         def on_resize(window, w, h):
             nonlocal window_size
             nonlocal hdpi_factor
-
+            if w == 0 or h == 0:
+                return
             hdpi_factor = glfw.getHDPIFactor(window)
             g_pool.gui.scale = g_pool.gui_user_scale * hdpi_factor
             window_size = w, h

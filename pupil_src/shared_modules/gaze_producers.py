@@ -305,7 +305,7 @@ class Section(object):
             recent = [d for d in self["bg_task"].fetch()]
             if recent:
                 progress, data, calibration = zip(*recent)
-                self['gaze_positions'].extend(chain(*data))
+                self['gaze_positions'].extend(chain.from_iterable(data))
                 self['status'] = progress[-1]
                 self['calibration'] = calibration[-1]
             if self["bg_task"].completed:
@@ -339,7 +339,7 @@ class Offline_Calibration(Gaze_Producer_Base):
             if session_data['version'] != self.session_data_version:
                 logger.warning("Session data from old version. Will not use this.")
                 assert False
-        except Exception as e:
+        except (AssertionError, FileNotFoundError):
             session_data = {}
             max_idx = len(self.g_pool.timestamps) - 1
             session_data['sections'] = [make_section_dict(make_section_label(),
@@ -385,8 +385,8 @@ class Offline_Calibration(Gaze_Producer_Base):
             current = self.g_pool.capture.get_frame_index()
             for nf in self.manual_ref_positions:
                 if nf['index'] > current:
-                    self.g_pool.capture.seek_to_frame(nf['index'])
-                    self.g_pool.new_seek = True
+                    self.notify_all({'subject': 'seek_control.should_seek',
+                                     'index': nf['index']})
                     return
             logger.error('No further natural feature available')
 
@@ -579,21 +579,18 @@ class Offline_Calibration(Gaze_Producer_Base):
 
         for sec in self.sections:
             sec.recent_events()
-            # if sec["bg_task"]:
-            #     recent = [d for d in sec["bg_task"].fetch()]
-            #     if recent:
-            #         progress, data, calibration = zip(*recent)
-            #         sec['gaze_positions'].extend(chain(*data))
-            #         sec['status'] = progress[-1]
-            #         sec['calibration'] = calibration[-1]
-            #     if sec["bg_task"].completed:
-            #         self.calc_accuracy(sec)
-            #         self.save_calibration(sec)
-            #         self.correlate_and_publish()
-            #         sec['bg_task'] = None
+#             if sec["bg_task"]:
+#                 recent = [d for d in sec["bg_task"].fetch()]
+#                 if recent:
+#                     progress, data = zip(*recent)
+#                     sec['gaze_positions'].extend(chain.from_iterable(data))
+#                     sec['status'] = progress[-1]
+#                 if sec["bg_task"].completed:
+#                     self.correlate_and_publish()
+#                     sec['bg_task'] = None
 
     def correlate_and_publish(self):
-        all_gaze = list(chain(*[s['gaze_positions'] for s in self.sections]))
+        all_gaze = list(chain.from_iterable((s['gaze_positions'] for s in self.sections)))
         self.g_pool.gaze_positions = sorted(all_gaze, key=lambda d: d['timestamp'])
         self.g_pool.gaze_positions_by_frame = correlate_data(self.g_pool.gaze_positions, self.g_pool.timestamps)
         self.notify_all({'subject': 'gaze_positions_changed', 'delay':1})
@@ -632,8 +629,8 @@ class Offline_Calibration(Gaze_Producer_Base):
         sec['status'] = 'Starting calibration' # This will be overwritten on success
         sec['gaze_positions'] = []  # reset interim buffer for given section
 
-        calib_list = list(chain(*self.g_pool.pupil_positions_by_frame[slice(*sec['calibration_range'])]))
-        map_list = list(chain(*self.g_pool.pupil_positions_by_frame[slice(*sec['mapping_range'])]))
+        calib_list = list(chain.from_iterable(self.g_pool.pupil_positions_by_frame[slice(*sec['calibration_range'])]))
+        map_list = list(chain.from_iterable(self.g_pool.pupil_positions_by_frame[slice(*sec['mapping_range'])]))
 
         if sec['calibration_method'] == 'circle_marker':
             ref_list = self.circle_marker_positions

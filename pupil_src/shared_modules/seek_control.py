@@ -110,10 +110,23 @@ class Seek_Control(System_Plugin_Base):
             playback_time += (time.monotonic() - self.start_time) * self._playback_speed
         return playback_time
 
+    def on_notify(self, notification):
+        if notification['subject'] == 'seek_control.should_seek':
+            if 'index' in notification:
+                self.set_playback_time_idx(notification['index'])
+            elif 'timestamp' in notification:
+                self.set_playback_time(notification['timestamp'])
+
     def set_playback_time(self, val):
         '''Callback used by seek bar on user input'''
         idx = self.ts_idx_from_playback_time(val)
+        self.set_playback_time_idx(idx)
+
+    def set_playback_time_idx(self, idx):
+        '''Callback used by plugins to request seek'''
         self.start_ts = self.g_pool.timestamps[idx]
+        self.was_seeking = True
+        self.notify_all({'subject': 'seek_control.was_seeking'})
 
     @property
     def trim_left_ts(self):
