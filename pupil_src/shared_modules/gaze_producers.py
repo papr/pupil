@@ -28,7 +28,7 @@ from glfw import *
 from methods import normalize
 from player_methods import correlate_data
 from plugin import Producer_Plugin_Base
-from gaze_sections import Section, construct_cache, make_section_label
+from gaze_sections import Section, make_section_label
 
 logger = logging.getLogger(__name__)
 
@@ -374,38 +374,7 @@ class Offline_Calibration(Gaze_Producer_Base):
         with gl_utils.Coord_System(t0, t1, height, 0):
             gl.glTranslatef(0, 0.001 + scale * self.timeline_line_height / 2, 0)
             for section in self.sections:
-                cal_slc = slice(*section['calibration_range'])
-                map_slc = slice(*section['mapping_range'])
-                cal_ts = self.g_pool.timestamps[cal_slc]
-                map_ts = self.g_pool.timestamps[map_slc]
-
-                color = cygl_utils.RGBA(*section['color'][:3], 1.)
-                if len(cal_ts):
-                    cygl_utils.draw_rounded_rect((cal_ts[0], -4 * scale),
-                                                 (cal_ts[-1] - cal_ts[0], 8 * scale),
-                                                 corner_radius=0,
-                                                 color=color,
-                                                 sharpness=1.)
-                if len(map_ts):
-                    cygl_utils.draw_rounded_rect((map_ts[0], -scale),
-                                                 (map_ts[-1] - map_ts[0], 2 * scale),
-                                                 corner_radius=0,
-                                                 color=color,
-                                                 sharpness=1.)
-
-                color = cygl_utils.RGBA(1., 1., 1., .5)
-                if section['calibration_method'] == "natural_features":
-                    cygl_utils.draw_x([(m['timestamp'], 0) for m in self.manual_ref_positions],
-                                      height=12 * scale,
-                                      width=3 * pixel_to_time_fac / scale,
-                                      thickness=scale,
-                                      color=color)
-                else:
-                    cygl_utils.draw_bars([(m['timestamp'], 0) for m in self.circle_marker_positions],
-                                         height=12 * scale,
-                                         thickness=scale,
-                                         color=color)
-
+                section.draw(pixel_to_time_fac, scale)
                 gl.glTranslatef(0, scale * self.timeline_line_height, 0)
 
     def draw_labels(self, width, height, scale):

@@ -15,6 +15,7 @@ from itertools import cycle, chain
 from collections import namedtuple
 
 from pyglui import ui
+from pyglui.cygl import utils as cygl_utils
 
 import background_helper as bh
 from calibration_routines.finish_calibration import select_calibration_method
@@ -219,6 +220,7 @@ class Section(object):
         elif input_obj in (s['label'] for s in self.parent.sections):
             logger.warning('Duplicated section label')
         else:
+            self.rename_saved_calibration(new_label=input_obj)
             self.cache['label'] = input_obj
             self.menu.label = self.menu_title
 
@@ -249,6 +251,11 @@ class Section(object):
 
     def remove(self):
         self.deinit_ui()
+        try:
+            os.remove(self.calibration_path())
+        except FileNotFoundError:
+            pass  # no successful calibration saved yet
+        # TODO: catch unknown exception on Windows if file is in use
         self.parent.sections.remove(self)
         self.parent.correlate_and_publish()
         self.cleanup()
@@ -266,7 +273,7 @@ class Section(object):
         if self.cache['calibration_method'] == 'circle_marker':
             ref_list = self.parent.circle_marker_positions
         elif self.cache['calibration_method'] == 'natural_features':
-            ref_list = self.parent.anual_ref_positions
+            ref_list = self.parent.manual_ref_positions
 
         start = self.cache['calibration_range'][0]
         end = self.cache['calibration_range'][1]
@@ -314,15 +321,60 @@ class Section(object):
         elif result.topic == 'mapping':
             self.gaze_positions.extend(result.value)
 
-    def save_calibration(self):
-        file_name = self.cache['label'] + '.plcalibration'
+    def calibration_path(self, label=None):
+        label = label or self.cache['label']
+        file_name = label + '.plcalibration'
         rec_dir = self.parent.g_pool.rec_dir
-        target_path = os.path.join(rec_dir, 'offline_data', file_name)
+        return os.path.join(rec_dir, 'offline_data', file_name)
+
+    def save_calibration(self):
+        target_path = self.calibration_path()
         self.calibration['version'] = CALIBRATION_FILE_VERSION
         save_object(self.calibration, target_path)
+
+    def rename_saved_calibration(self, new_label):
+        old_path = self.calibration_path()
+        new_path = self.calibration_path(label=new_label)
+        try:
+            os.rename(old_path, new_path)
+        except FileNotFoundError:
+            pass  # no successful calibration saved yet
 
     def __getitem__(self, key):
         return self.cache[key]
 
     def __setitem__(self, key, value):
         self.cache[key] = value
+
+    def draw(self, pixel_to_time_fac, scale):
+        cal_slc = slice(*self.cache['calibration_range'])
+        map_slc = slice(*self.cache['mapping_range'])
+        cal_ts = self.parent.g_pool.timestamps[cal_slc]
+        map_ts = self.parent.g_pool.timestamps[map_slc]
+
+        color = cygl_utils.RGBA(*self.cache['color'][:3], 1.)
+        if len(cal_ts):
+            cygl_utils.draw_rounded_rect((cal_ts[0], -4 * scale),
+                                         (cal_ts[-1] - cal_ts[0], 8 * scale),
+                                         corner_radius=0,
+                                         color=color,
+                                         sharpness=1.)
+        if len(map_ts):
+            cygl_utils.draw_rounded_rect((map_ts[0], -scale),
+                                         (map_ts[-1] - map_ts[0], 2 * scale),
+                                         corner_radius=0,
+                                         color=color,
+                                         sharpness=1.)
+
+        color = cygl_utils.RGBA(1., 1., 1., .5)
+        if self.cache['calibration_method'] == "natural_features":
+            cygl_utils.draw_x([(m['timestamp'], 0) for m in self.parent.manual_ref_positions],
+                              height=12 * scale,
+                              width=3 * pixel_to_time_fac / scale,
+                              thickness=scale,
+                              color=color)
+        else:
+            cygl_utils.draw_bars([(m['timestamp'], 0) for m in self.parent.circle_marker_positions],
+                                 height=12 * scale,
+                                 thickness=scale,
+                                 color=color)
