@@ -27,8 +27,8 @@ from file_methods import load_object, save_object
 from glfw import *
 from methods import normalize
 from player_methods import correlate_data
-from plugin import Producer_Plugin_Base
-from gaze_sections import Section, make_section_label
+from plugin import Producer_Plugin_Base, Plugin_List
+from gaze_sections import Section_List
 
 logger = logging.getLogger(__name__)
 
@@ -131,6 +131,7 @@ class Offline_Calibration(Gaze_Producer_Base):
 
     def __init__(self, g_pool, manual_ref_edit_mode=False):
         super().__init__(g_pool)
+        g_pool.gaze_manager = self
         self.timeline_line_height = 16
         self.manual_ref_edit_mode = manual_ref_edit_mode
         self.menu = None
@@ -143,14 +144,16 @@ class Offline_Calibration(Gaze_Producer_Base):
             if session_data['version'] != self.session_data_version:
                 logger.warning("Session data from old version. Cache will be discarded.")
                 assert False
-            self.sections = [Section(self, cache=cache) for cache in session_data['sections']]
         except (AssertionError, FileNotFoundError):
-            max_idx = len(self.g_pool.timestamps) - 1
             self.sections = [Section(self, label=make_section_label(),
                              calib_range=(0, max_idx), map_range=(0, max_idx))]
             session_data = {}
             session_data['circle_marker_positions'] = []
             session_data['manual_ref_positions'] = []
+
+        section_initializers = session_data.get('sections', default_sections)
+        self.sections = Section_List(g_pool, section_initializers)
+
         self.circle_marker_positions = session_data['circle_marker_positions']
         self.manual_ref_positions = session_data['manual_ref_positions']
         if self.circle_marker_positions:
@@ -160,6 +163,17 @@ class Offline_Calibration(Gaze_Producer_Base):
             self.correlate_and_publish()
         else:
             self.detection_progress = 0.0
+
+    def create_default_sections(self):
+        max_idx = len(self.g_pool.timestamps) - 1
+        default_calib = ('Calibration_Section',
+                         {'label': 'Default Calibration',
+                          'application_range': (0, max_idx)})
+        default_mapping = ('Mapping_Section',
+                           {'label': 'Default Mapping',
+                            'application_range': (0, max_idx),
+                            'import_section': 'Default Calibration'})
+        return default_calib, default_mapping
 
     def append_section(self):
         max_idx = len(self.g_pool.timestamps) - 1
@@ -328,45 +342,48 @@ class Offline_Calibration(Gaze_Producer_Base):
     def gl_display(self):
         # normalize coordinate system, no need this step in utility functions
         with gl_utils.Coord_System(0, 1, 0, 1):
-            ref_point_norm = [r['norm_pos'] for r in self.circle_marker_positions
-                              if self.g_pool.capture.get_frame_index() == r['index']]
-            cygl_utils.draw_points(ref_point_norm, size=35,
-                                   color=cygl_utils.RGBA(0, .5, 0.5, .7))
-            cygl_utils.draw_points(ref_point_norm, size=5,
-                                   color=cygl_utils.RGBA(.0, .9, 0.0, 1.0))
-
-            manual_refs_in_frame = [r for r in self.manual_ref_positions
-                                    if self.g_pool.capture.get_frame_index() in r['index_range']]
-            current = self.g_pool.capture.get_frame_index()
-            for mr in manual_refs_in_frame:
-                if mr['index'] == current:
-                    cygl_utils.draw_points([mr['norm_pos']], size=35,
-                                           color=cygl_utils.RGBA(.0, .0, 0.9, .8))
-                    cygl_utils.draw_points([mr['norm_pos']], size=5,
-                                           color=cygl_utils.RGBA(.0, .9, 0.0, 1.0))
-                else:
-                    distance = abs(current - mr['index'])
-                    range_radius = (mr['index_range'][-1] - mr['index_range'][0]) // 2
-                    # scale alpha [.1, .9] depending on distance to current frame
-                    alpha = distance / range_radius
-                    alpha = 0.1 * alpha + 0.9 * (1. - alpha)
-                    # Use draw_progress instead of draw_circle. draw_circle breaks
-                    # because of the normalized coord-system.
-                    cygl_utils.draw_progress(mr['norm_pos'], 0., 0.999,
-                                             inner_radius=20.,
-                                             outer_radius=35.,
-                                             color=cygl_utils.RGBA(.0, .0, 0.9, alpha))
-                    cygl_utils.draw_points([mr['norm_pos']], size=5,
-                                           color=cygl_utils.RGBA(.0, .9, 0.0, alpha))
+            self.display_circle_markers()
+            self.display_manual_ref_markers()
 
         for sec in self.sections:
-            if sec['vis_mapping_error'] and sec.error_lines is not None:
-                cygl_utils.draw_polyline_norm(sec.error_lines,
-                                              color=cygl_utils.RGBA(*sec['color']),
-                                              line_type=gl.GL_LINES)
+            sec.gl_display()
 
         # calculate correct timeline height. Triggers timeline redraw only if changed
         self.timeline.content_height = max(0.001, self.timeline_line_height * len(self.sections))
+
+    def display_circle_markers(self):
+        current = self.g_pool.capture.get_frame_index()
+        ref_point_norm = [r['norm_pos'] for r in self.circle_marker_positions
+                          if current == r['index']]
+        cygl_utils.draw_points(ref_point_norm, size=35,
+                                color=cygl_utils.RGBA(0, .5, 0.5, .7))
+        cygl_utils.draw_points(ref_point_norm, size=5,
+                                color=cygl_utils.RGBA(.0, .9, 0.0, 1.0))
+
+    def display_manual_ref_markers(self):
+        current = self.g_pool.capture.get_frame_index()
+        manual_refs_in_frame = [r for r in self.manual_ref_positions
+                                if current in r['index_range']]
+        for mr in manual_refs_in_frame:
+            if mr['index'] == current:
+                cygl_utils.draw_points([mr['norm_pos']], size=35,
+                                        color=cygl_utils.RGBA(.0, .0, 0.9, .8))
+                cygl_utils.draw_points([mr['norm_pos']], size=5,
+                                        color=cygl_utils.RGBA(.0, .9, 0.0, 1.0))
+            else:
+                distance = abs(current - mr['index'])
+                range_radius = (mr['index_range'][-1] - mr['index_range'][0]) // 2
+                # scale alpha [.1, .9] depending on distance to current frame
+                alpha = distance / range_radius
+                alpha = 0.1 * alpha + 0.9 * (1. - alpha)
+                # Use draw_progress instead of draw_circle. draw_circle breaks
+                # because of the normalized coord-system.
+                cygl_utils.draw_progress(mr['norm_pos'], 0., 0.999,
+                                            inner_radius=20.,
+                                            outer_radius=35.,
+                                            color=cygl_utils.RGBA(.0, .0, 0.9, alpha))
+                cygl_utils.draw_points([mr['norm_pos']], size=5,
+                                        color=cygl_utils.RGBA(.0, .9, 0.0, alpha))
 
     def draw_sections(self, width, height, scale):
         t0, t1 = self.g_pool.timestamps[0], self.g_pool.timestamps[-1]
@@ -374,7 +391,7 @@ class Offline_Calibration(Gaze_Producer_Base):
         with gl_utils.Coord_System(t0, t1, height, 0):
             gl.glTranslatef(0, 0.001 + scale * self.timeline_line_height / 2, 0)
             for section in self.sections:
-                section.draw(pixel_to_time_fac, scale)
+                section.draw_range(pixel_to_time_fac, scale)
                 gl.glTranslatef(0, scale * self.timeline_line_height, 0)
 
     def draw_labels(self, width, height, scale):
@@ -415,6 +432,7 @@ class Offline_Calibration(Gaze_Producer_Base):
             if sec.bg_task:
                 sec.bg_task.cancel()
         self.save_cache()
+        del self.g_pool.gaze_manager
 
     def save_cache(self):
         session_data = {}
