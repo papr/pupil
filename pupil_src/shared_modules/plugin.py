@@ -14,6 +14,7 @@ import sys
 import importlib
 from time import time
 import logging
+import traceback
 
 logger = logging.getLogger(__name__)
 """
@@ -410,6 +411,7 @@ def import_runtime_plugins(plugin_dir):
                         runtime_plugins.append(member)
             except Exception as e:
                 logger.warning("Failed to load '{}'. Reason: '{}' ".format(d, e))
+                logger.debug(traceback.format_exc())
     return runtime_plugins
 
 

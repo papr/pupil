@@ -334,7 +334,10 @@ def world(
             pos = x, y
             pos = normalize(pos, camera_render_size)
             # Position in img pixels
-            pos = denormalize(pos, g_pool.capture.frame_size)
+            try:
+                pos = denormalize(pos, g_pool.capture.frame_size)
+            except AttributeError:
+                return
             for p in g_pool.plugins:
                 p.on_pos(pos)
 
