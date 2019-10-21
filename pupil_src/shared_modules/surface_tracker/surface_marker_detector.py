@@ -317,15 +317,12 @@ class Surface_Combined_Marker_Detector(Surface_Base_Marker_Detector):
         square_marker_inverted_markers: bool = ...,
         square_marker_use_online_mode: bool = ...,
         apriltag_families: str = ...,
-        apriltag_border: int = ...,
         apriltag_nthreads: int = 2,
         apriltag_quad_decimate: float = 3.0,
-        apriltag_quad_blur: float = ...,
+        apriltag_quad_sigma: float = ...,
         apriltag_refine_edges: bool = ...,
-        apriltag_refine_decode: bool = ...,
-        apriltag_refine_pose: bool = ...,
+        apriltag_decode_sharpening: int = ...,
         apriltag_debug: bool = ...,
-        apriltag_quad_contours: bool = ...,
     ):
         self.__square_detector = Surface_Square_Marker_Detector(
             marker_detector_modes=marker_detector_modes,
@@ -337,15 +334,12 @@ class Surface_Combined_Marker_Detector(Surface_Base_Marker_Detector):
             marker_detector_modes=marker_detector_modes,
             marker_min_perimeter=marker_min_perimeter,
             apriltag_families=apriltag_families,
-            apriltag_border=apriltag_border,
             apriltag_nthreads=apriltag_nthreads,
             apriltag_quad_decimate=apriltag_quad_decimate,
-            apriltag_quad_blur=apriltag_quad_blur,
+            apriltag_quad_sigma=apriltag_quad_sigma,
             apriltag_refine_edges=apriltag_refine_edges,
-            apriltag_refine_decode=apriltag_refine_decode,
-            apriltag_refine_pose=apriltag_refine_pose,
+            apriltag_decode_sharpening=apriltag_decode_sharpening,
             apriltag_debug=apriltag_debug,
-            apriltag_quad_contours=apriltag_quad_contours,
         )
 
     @property
